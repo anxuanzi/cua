@@ -55,3 +55,9 @@ temp/
 .serena/
 
 .screenshots/
+
+docs/
+
+CLAUDE.md
+
+.claude/
