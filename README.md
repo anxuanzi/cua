@@ -142,15 +142,6 @@ CUA includes multiple safety mechanisms:
 3. **Human Takeover**: Press `Cmd+Shift+Esc` (macOS) or `Ctrl+Shift+Esc` (Windows)
 4. **Audit Logging**: All actions logged
 
-## Development with Claude Code
-
-This project is designed for development with Claude Code:
-
-- `CLAUDE.md` - Instructions for Claude Code
-- `.mcp.json` - MCP server configuration
-- `.claude/commands/` - Custom slash commands
-- `docs/IMPLEMENTATION_ROADMAP.md` - Phased development plan
-
 ## License
 
 MIT
