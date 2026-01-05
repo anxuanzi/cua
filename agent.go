@@ -72,30 +72,20 @@ func (a *Agent) init(ctx context.Context) error {
 
 // doInit performs the actual initialization.
 func (a *Agent) doInit(ctx context.Context) error {
-	// Create Gemini models
+	// Create Gemini model
+	// The single-loop CUA agent uses one model for all reasoning and actions
 	clientCfg := &genai.ClientConfig{APIKey: a.config.apiKey}
+	modelName := string(a.config.model)
 
-	subAgentModelName := string(a.config.model)
-	coordinatorModelName := string(Gemini2Pro)
-
-	if a.config.model == Gemini2Pro || a.config.model == Gemini3Pro {
-		coordinatorModelName = string(a.config.model)
+	model, err := gemini.NewModel(ctx, modelName, clientCfg)
+	if err != nil {
+		return fmt.Errorf("failed to create model: %w", err)
 	}
 
-	coordinatorModel, err := gemini.NewModel(ctx, coordinatorModelName, clientCfg)
+	// Create single-loop CUA agent
+	coordinator, err := internalagent.NewCoordinatorAgent(model)
 	if err != nil {
-		return fmt.Errorf("failed to create coordinator model: %w", err)
-	}
-
-	subAgentModel, err := gemini.NewModel(ctx, subAgentModelName, clientCfg)
-	if err != nil {
-		return fmt.Errorf("failed to create sub-agent model: %w", err)
-	}
-
-	// Create coordinator agent
-	coordinator, err := internalagent.NewCoordinatorAgent(coordinatorModel, subAgentModel)
-	if err != nil {
-		return fmt.Errorf("failed to create coordinator: %w", err)
+		return fmt.Errorf("failed to create CUA agent: %w", err)
 	}
 
 	// Create runner

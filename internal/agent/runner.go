@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"runtime"
 	"strings"
 	"time"
 
@@ -72,6 +73,18 @@ func NewRunner(coordinator adkagent.Agent) (*Runner, error) {
 	}, nil
 }
 
+// getPlatformName returns the platform identifier for the instruction template.
+func getPlatformName() string {
+	switch runtime.GOOS {
+	case "darwin":
+		return "macos"
+	case "windows":
+		return "windows"
+	default:
+		return runtime.GOOS
+	}
+}
+
 // Run executes a task and returns the result.
 func (r *Runner) Run(ctx context.Context, task string, cfg RunConfig) (*Result, error) {
 	userID := "cua-user"
@@ -79,9 +92,11 @@ func (r *Runner) Run(ctx context.Context, task string, cfg RunConfig) (*Result, 
 	// Create TaskMemory for context engineering
 	taskMem := memory.New(task)
 
-	// Create session with task context
+	// Create session with task context and platform info
+	// These values are injected into the instruction template via {task_context} and {platform}
 	initialState := map[string]any{
 		"task_context": taskMem.ToPrompt(),
+		"platform":     getPlatformName(),
 	}
 
 	createResp, err := r.sessionSvc.Create(ctx, &session.CreateRequest{
@@ -96,7 +111,8 @@ func (r *Runner) Run(ctx context.Context, task string, cfg RunConfig) (*Result, 
 			Error:   err,
 		}, fmt.Errorf("failed to create session: %w", err)
 	}
-	sessionID := createResp.Session.ID()
+	sess := createResp.Session
+	sessionID := sess.ID()
 
 	// Execute task
 	var steps []Step
@@ -174,6 +190,12 @@ func (r *Runner) Run(ctx context.Context, task string, cfg RunConfig) (*Result, 
 			actionDuration := time.Since(lastActionTime)
 			taskMem.RecordAction(step.Action, nil, step.Success, step.Description, actionDuration)
 			lastActionTime = time.Now()
+
+			// Update session state with new context (for next iteration)
+			// This ensures the {task_context} placeholder gets fresh data
+			if err := sess.State().Set("task_context", taskMem.ToPrompt()); err != nil {
+				logging.Warn("Failed to update session state: %v", err)
+			}
 
 			// Check if stuck
 			if taskMem.NeedsHelp() {

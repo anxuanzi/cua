@@ -17,91 +17,106 @@ type mockLLM struct {
 func TestNewCoordinatorAgent(t *testing.T) {
 	t.Parallel()
 
-	coordinatorModel := &mockLLM{}
-	subAgentModel := &mockLLM{}
-
-	agent, err := NewCoordinatorAgent(coordinatorModel, subAgentModel)
+	m := &mockLLM{}
+	agent, err := NewCoordinatorAgent(m)
 
 	require.NoError(t, err)
 	assert.NotNil(t, agent)
-	assert.Equal(t, "coordinator", agent.Name())
+	assert.Equal(t, "cua_loop", agent.Name())
 }
 
-func TestBuildPerceptionInstruction(t *testing.T) {
+func TestNewCUAAgent(t *testing.T) {
 	t.Parallel()
 
-	instruction := BuildPerceptionInstruction()
+	m := &mockLLM{}
+	agent, err := NewCUAAgent(m)
 
-	// Verify essential elements
-	assert.Contains(t, instruction, "screen analysis specialist")
+	require.NoError(t, err)
+	assert.NotNil(t, agent)
+	assert.Equal(t, "cua_loop", agent.Name())
+}
+
+func TestNewCUAAgentWithConfig(t *testing.T) {
+	t.Parallel()
+
+	m := &mockLLM{}
+	agent, err := NewCUAAgentWithConfig(CUAConfig{
+		Model:         m,
+		MaxIterations: 100,
+	})
+
+	require.NoError(t, err)
+	assert.NotNil(t, agent)
+	assert.Equal(t, "cua_loop", agent.Name())
+}
+
+func TestBuildCUAInstruction(t *testing.T) {
+	t.Parallel()
+
+	instruction := BuildCUAInstruction()
+
+	// Verify essential ReAct elements
+	assert.Contains(t, instruction, "desktop automation agent")
+	assert.Contains(t, instruction, "ReAct")
+	assert.Contains(t, instruction, "OBSERVE")
+	assert.Contains(t, instruction, "THINK")
+	assert.Contains(t, instruction, "ACT")
+	assert.Contains(t, instruction, "REPEAT")
+
+	// Verify tool references
 	assert.Contains(t, instruction, "screenshot")
-	assert.Contains(t, instruction, "find_element")
-	assert.Contains(t, instruction, "Current State:")
-	assert.Contains(t, instruction, "Key Elements")
-	assert.Contains(t, instruction, "Observations")
-}
-
-func TestBuildDecisionInstruction(t *testing.T) {
-	t.Parallel()
-
-	instruction := BuildDecisionInstruction()
-
-	// Verify essential elements
-	assert.Contains(t, instruction, "decision-making component")
-	assert.Contains(t, instruction, "{screen_state}") // Template variable for ADK state
-	assert.Contains(t, instruction, "exit_loop")
-	assert.Contains(t, instruction, "Analysis:")
-	assert.Contains(t, instruction, "Decision:")
-	assert.Contains(t, instruction, "ONE action per decision")
-}
-
-func TestBuildActionInstruction(t *testing.T) {
-	t.Parallel()
-
-	instruction := BuildActionInstruction()
-
-	// Verify essential elements
-	assert.Contains(t, instruction, "action executor")
-	assert.Contains(t, instruction, "{next_action}") // Template variable for ADK state
 	assert.Contains(t, instruction, "click")
 	assert.Contains(t, instruction, "type_text")
 	assert.Contains(t, instruction, "key_press")
 	assert.Contains(t, instruction, "scroll")
-	assert.Contains(t, instruction, "wait")
 	assert.Contains(t, instruction, "drag")
-	assert.Contains(t, instruction, "Executed:")
-	assert.Contains(t, instruction, "Result:")
+	assert.Contains(t, instruction, "wait")
+	assert.Contains(t, instruction, "complete_task")
+	assert.Contains(t, instruction, "need_help")
+	assert.Contains(t, instruction, "find_element")
+
+	// Verify dynamic context placeholder
+	assert.Contains(t, instruction, "{task_context}")
 }
 
-func TestBuildPerceptionInstruction_ContainsPlatformContext(t *testing.T) {
+func TestBuildCUAInstruction_ContainsPlatformContext(t *testing.T) {
 	t.Parallel()
 
-	instruction := BuildPerceptionInstruction()
+	instruction := BuildCUAInstruction()
 
 	// Should contain platform info (using XML tags)
 	assert.Contains(t, instruction, "<platform>")
 	assert.Contains(t, instruction, "<os>")
 }
 
-func TestBuildDecisionInstruction_ContainsPlatformShortcuts(t *testing.T) {
+func TestBuildCUAInstruction_ContainsPlatformShortcuts(t *testing.T) {
 	t.Parallel()
 
-	instruction := BuildDecisionInstruction()
+	instruction := BuildCUAInstruction()
 
 	// Should contain platform-specific keyboard info
 	assert.True(t, strings.Contains(instruction, "App launcher") ||
 		strings.Contains(instruction, "Primary modifier"),
-		"Decision instruction should contain platform keyboard info")
+		"CUA instruction should contain platform keyboard info")
 }
 
-func TestBuildActionInstruction_ContainsToolUsageWarnings(t *testing.T) {
+func TestBuildCUAInstruction_ContainsExamples(t *testing.T) {
 	t.Parallel()
 
-	instruction := BuildActionInstruction()
+	instruction := BuildCUAInstruction()
 
-	// Verify tool usage warnings are present (to prevent agent prefixing issues)
-	assert.Contains(t, instruction, "EXECUTE EXACTLY")
-	assert.Contains(t, instruction, "without any prefix")
+	// Should contain examples for tool usage
+	assert.Contains(t, instruction, "Example")
+}
+
+func TestBuildCUAInstruction_ContainsRules(t *testing.T) {
+	t.Parallel()
+
+	instruction := BuildCUAInstruction()
+
+	// Should contain critical rules
+	assert.Contains(t, instruction, "ONE ACTION PER TURN")
+	assert.Contains(t, instruction, "SCREENSHOT FIRST")
 }
 
 func TestDefaultCoordinatorConfig(t *testing.T) {
@@ -109,54 +124,40 @@ func TestDefaultCoordinatorConfig(t *testing.T) {
 
 	config := DefaultCoordinatorConfig()
 
-	assert.Equal(t, 20, config.MaxIterations)
+	// Single-loop defaults to 50 iterations
+	assert.Equal(t, 50, config.MaxIterations)
+}
+
+func TestDefaultCUAConfig(t *testing.T) {
+	t.Parallel()
+
+	config := DefaultCUAConfig()
+
+	assert.Equal(t, 50, config.MaxIterations)
 }
 
 func TestCoordinatorConfig_Fields(t *testing.T) {
 	t.Parallel()
 
 	config := CoordinatorConfig{
-		CoordinatorModel: &mockLLM{},
-		SubAgentModel:    &mockLLM{},
-		MaxIterations:    30,
+		Model:         &mockLLM{},
+		MaxIterations: 30,
 	}
 
 	assert.Equal(t, 30, config.MaxIterations)
-	assert.NotNil(t, config.CoordinatorModel)
-	assert.NotNil(t, config.SubAgentModel)
+	assert.NotNil(t, config.Model)
 }
 
-func TestNewPerceptionAgent(t *testing.T) {
+func TestCUAConfig_Fields(t *testing.T) {
 	t.Parallel()
 
-	m := &mockLLM{}
-	agent, err := NewPerceptionAgent(m)
+	config := CUAConfig{
+		Model:         &mockLLM{},
+		MaxIterations: 75,
+	}
 
-	require.NoError(t, err)
-	assert.NotNil(t, agent)
-	assert.Equal(t, "perception", agent.Name())
-}
-
-func TestNewDecisionAgent(t *testing.T) {
-	t.Parallel()
-
-	m := &mockLLM{}
-	agent, err := NewDecisionAgent(m)
-
-	require.NoError(t, err)
-	assert.NotNil(t, agent)
-	assert.Equal(t, "decision", agent.Name())
-}
-
-func TestNewActionAgent(t *testing.T) {
-	t.Parallel()
-
-	m := &mockLLM{}
-	agent, err := NewActionAgent(m)
-
-	require.NoError(t, err)
-	assert.NotNil(t, agent)
-	assert.Equal(t, "action", agent.Name())
+	assert.Equal(t, 75, config.MaxIterations)
+	assert.NotNil(t, config.Model)
 }
 
 func TestLLM_TypeAlias(t *testing.T) {
@@ -167,24 +168,28 @@ func TestLLM_TypeAlias(t *testing.T) {
 	assert.NotNil(t, llm)
 }
 
-func TestExitLoopArgs(t *testing.T) {
+func TestNewCoordinatorAgentWithConfig_DefaultsMaxIterations(t *testing.T) {
 	t.Parallel()
 
-	args := ExitLoopArgs{
-		Summary: "Task completed successfully",
-	}
+	m := &mockLLM{}
+	agent, err := NewCoordinatorAgentWithConfig(CoordinatorConfig{
+		Model:         m,
+		MaxIterations: 0, // Should default to 50
+	})
 
-	assert.Equal(t, "Task completed successfully", args.Summary)
+	require.NoError(t, err)
+	assert.NotNil(t, agent)
 }
 
-func TestExitLoopResult(t *testing.T) {
+func TestNewCUAAgentWithConfig_DefaultsMaxIterations(t *testing.T) {
 	t.Parallel()
 
-	result := ExitLoopResult{
-		Success: true,
-		Summary: "Opened calculator and computed 42+8=50",
-	}
+	m := &mockLLM{}
+	agent, err := NewCUAAgentWithConfig(CUAConfig{
+		Model:         m,
+		MaxIterations: -5, // Should default to 50
+	})
 
-	assert.True(t, result.Success)
-	assert.Equal(t, "Opened calculator and computed 42+8=50", result.Summary)
+	require.NoError(t, err)
+	assert.NotNil(t, agent)
 }

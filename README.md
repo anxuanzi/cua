@@ -120,6 +120,8 @@ cua.WithVerbose(true), // Default: false
 
 ## Architecture
 
+CUA uses a **single-loop ReAct** architecture for efficient desktop automation:
+
 ```
 cua.New() → Agent.Do("task")
      │
@@ -127,11 +129,19 @@ cua.New() → Agent.Do("task")
      ├── pkg/input   (mouse/keyboard via RobotGo)
      └── pkg/screen  (screen capture)
      │
-     └── internal/agent (ADK agents - hidden from users)
-         ├── Coordinator (Gemini 3 Pro - planning)
-         ├── Perception (Gemini 3 Flash - vision)
-         └── Action (Gemini 3 Flash - execution)
+     └── internal/agent (ADK single-loop agent - hidden from users)
+         │
+         └── CUA Agent (configurable model)
+             ├── ReAct Loop: OBSERVE → THINK → ACT → REPEAT
+             ├── 10 Tools: screenshot, click, type_text, etc.
+             ├── Exit: complete_task, need_help
+             └── Context: TaskMemory (bounded, progressive summarization)
 ```
+
+**Key Design Choices:**
+- **Single-loop** (not multi-agent): Simpler, faster, smarter - full context available for every decision
+- **Bounded context**: TaskMemory handles long tasks via sliding window (~850 tokens max regardless of task length)
+- **Platform-aware**: Automatic platform detection with correct shortcuts and conventions
 
 ## Safety
 
