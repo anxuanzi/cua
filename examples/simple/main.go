@@ -24,7 +24,7 @@ import (
 func main() {
 	// Create agent - API key is read from GOOGLE_API_KEY or GEMINI_API_KEY env var
 	// Enable verbose mode to see what's happening
-	agent := cua.New(cua.WithVerbose(true))
+	agent := cua.New(cua.WithVerbose(true), cua.WithModel(cua.Gemini2Pro))
 
 	// Example 1: Simple task
 	fmt.Println("=== CUA Simple Example ===")

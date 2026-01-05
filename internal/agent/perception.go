@@ -11,7 +11,7 @@ import (
 
 // NewPerceptionAgent creates the Perception Agent for screen analysis.
 // It uses Gemini Flash for fast, specialized screen understanding.
-// The instruction is built dynamically to include platform-specific context.
+// Output is saved to "screen_state" in session state for other agents to read.
 func NewPerceptionAgent(m model.LLM) (agent.Agent, error) {
 	// Create the tools for perception
 	screenshotTool, err := tools.NewScreenshotTool()
@@ -24,17 +24,17 @@ func NewPerceptionAgent(m model.LLM) (agent.Agent, error) {
 		return nil, err
 	}
 
-	// Build instruction with platform context
 	instruction := BuildPerceptionInstruction()
 
 	return llmagent.New(llmagent.Config{
-		Name:        "perception_agent",
+		Name:        "perception",
 		Model:       m,
-		Description: "Analyzes screenshots and UI elements to understand the current screen state.",
+		Description: "Captures and analyzes the current screen state.",
 		Instruction: instruction,
 		Tools: []tool.Tool{
 			screenshotTool,
 			findElementTool,
 		},
+		OutputKey: "screen_state",
 	})
 }

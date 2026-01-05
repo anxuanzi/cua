@@ -41,7 +41,7 @@ type Config struct {
 // defaultConfig returns the default configuration.
 func defaultConfig() *Config {
 	return &Config{
-		model:              Gemini2Flash,
+		model:              Gemini3Flash,
 		safetyLevel:        SafetyNormal,
 		timeout:            2 * time.Minute,
 		maxActions:         50,

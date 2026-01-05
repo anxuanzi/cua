@@ -1,16 +1,3 @@
-// Package cua provides a Computer Use Agent for desktop automation.
-//
-// CUA is a library-first desktop automation agent that uses vision and
-// accessibility APIs to perform any task a human can do on macOS or Windows.
-//
-// Basic usage:
-//
-//	agent := cua.New(cua.WithAPIKey("your-api-key"))
-//	result, err := agent.Do("Open Safari and search for golang")
-//	if err != nil {
-//	    log.Fatal(err)
-//	}
-//	fmt.Println(result.Summary)
 package cua
 
 import (

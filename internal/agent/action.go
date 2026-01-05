@@ -11,7 +11,7 @@ import (
 
 // NewActionAgent creates the Action Agent for executing desktop actions.
 // It uses Gemini Flash for fast, reliable action execution.
-// The instruction is built dynamically to include platform-specific context.
+// Output is saved to "action_result" in session state.
 func NewActionAgent(m model.LLM) (agent.Agent, error) {
 	// Create the action tools
 	clickTool, err := tools.NewClickTool()
@@ -44,13 +44,12 @@ func NewActionAgent(m model.LLM) (agent.Agent, error) {
 		return nil, err
 	}
 
-	// Build instruction with platform context
 	instruction := BuildActionInstruction()
 
 	return llmagent.New(llmagent.Config{
-		Name:        "action_agent",
+		Name:        "action",
 		Model:       m,
-		Description: "Executes desktop actions like clicking, typing, scrolling, and dragging.",
+		Description: "Executes desktop actions like clicking, typing, and scrolling.",
 		Instruction: instruction,
 		Tools: []tool.Tool{
 			clickTool,
@@ -60,5 +59,6 @@ func NewActionAgent(m model.LLM) (agent.Agent, error) {
 			waitTool,
 			dragTool,
 		},
+		OutputKey: "action_result",
 	})
 }

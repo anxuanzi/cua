@@ -38,6 +38,9 @@ type KeyPressResult struct {
 
 // pressKey handles the key_press tool invocation.
 func pressKey(ctx tool.Context, args KeyPressArgs) (KeyPressResult, error) {
+	// Log at INFO level so we always see tool invocations
+	keyPressLog.Info(">>> KEY_PRESS TOOL CALLED: key=%s modifiers=%v", args.Key, args.Modifiers)
+
 	if args.Key == "" {
 		keyPressLog.Failure("key_press", fmt.Errorf("key cannot be empty"))
 		return KeyPressResult{

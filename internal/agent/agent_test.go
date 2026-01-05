@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -11,54 +12,6 @@ import (
 // mockLLM is a mock implementation of model.LLM for testing.
 type mockLLM struct {
 	model.LLM
-}
-
-func TestNewPerceptionAgent(t *testing.T) {
-	t.Parallel()
-
-	m := &mockLLM{}
-	agent, err := NewPerceptionAgent(m)
-
-	require.NoError(t, err)
-	assert.NotNil(t, agent)
-	assert.Equal(t, "perception_agent", agent.Name())
-}
-
-func TestPerceptionInstruction_ContainsKeyElements(t *testing.T) {
-	t.Parallel()
-
-	// Verify the instruction contains essential elements
-	assert.Contains(t, PerceptionInstruction, "screen analysis specialist")
-	assert.Contains(t, PerceptionInstruction, "screenshot")
-	assert.Contains(t, PerceptionInstruction, "find_element")
-	assert.Contains(t, PerceptionInstruction, "SCREEN_STATE:")
-	assert.Contains(t, PerceptionInstruction, "COORDINATES")
-	assert.Contains(t, PerceptionInstruction, "OBSERVATIONS")
-}
-
-func TestNewActionAgent(t *testing.T) {
-	t.Parallel()
-
-	m := &mockLLM{}
-	agent, err := NewActionAgent(m)
-
-	require.NoError(t, err)
-	assert.NotNil(t, agent)
-	assert.Equal(t, "action_agent", agent.Name())
-}
-
-func TestActionInstruction_ContainsKeyElements(t *testing.T) {
-	t.Parallel()
-
-	// Verify the instruction contains essential elements
-	assert.Contains(t, ActionInstruction, "action execution specialist")
-	assert.Contains(t, ActionInstruction, "Click")
-	assert.Contains(t, ActionInstruction, "Type text")
-	assert.Contains(t, ActionInstruction, "keyboard keys")
-	assert.Contains(t, ActionInstruction, "Scroll")
-	assert.Contains(t, ActionInstruction, "Drag")
-	assert.Contains(t, ActionInstruction, "ACTION_RESULT:")
-	assert.Contains(t, ActionInstruction, "Safety Notes")
 }
 
 func TestNewCoordinatorAgent(t *testing.T) {
@@ -74,52 +27,81 @@ func TestNewCoordinatorAgent(t *testing.T) {
 	assert.Equal(t, "coordinator", agent.Name())
 }
 
-func TestCoordinatorInstruction_ContainsReActPattern(t *testing.T) {
+func TestBuildPerceptionInstruction(t *testing.T) {
 	t.Parallel()
 
-	// Verify the instruction contains ReAct pattern elements
-	assert.Contains(t, CoordinatorInstruction, "ReAct")
-	assert.Contains(t, CoordinatorInstruction, "OBSERVE")
-	assert.Contains(t, CoordinatorInstruction, "THINK")
-	assert.Contains(t, CoordinatorInstruction, "ACT")
-	assert.Contains(t, CoordinatorInstruction, "VERIFY")
-	assert.Contains(t, CoordinatorInstruction, "REPEAT")
+	instruction := BuildPerceptionInstruction()
+
+	// Verify essential elements
+	assert.Contains(t, instruction, "screen analysis specialist")
+	assert.Contains(t, instruction, "screenshot")
+	assert.Contains(t, instruction, "find_element")
+	assert.Contains(t, instruction, "Current State:")
+	assert.Contains(t, instruction, "Key Elements")
+	assert.Contains(t, instruction, "Observations")
 }
 
-func TestCoordinatorInstruction_ContainsCommunicationMarkers(t *testing.T) {
+func TestBuildDecisionInstruction(t *testing.T) {
 	t.Parallel()
 
-	// Verify communication markers are present
-	assert.Contains(t, CoordinatorInstruction, "TASK_COMPLETE")
-	assert.Contains(t, CoordinatorInstruction, "NEED_HELP")
+	instruction := BuildDecisionInstruction()
+
+	// Verify essential elements
+	assert.Contains(t, instruction, "decision-making component")
+	assert.Contains(t, instruction, "{screen_state}") // Template variable for ADK state
+	assert.Contains(t, instruction, "exit_loop")
+	assert.Contains(t, instruction, "Analysis:")
+	assert.Contains(t, instruction, "Decision:")
+	assert.Contains(t, instruction, "ONE action per decision")
 }
 
-func TestCoordinatorInstruction_ContainsTransferFunction(t *testing.T) {
+func TestBuildActionInstruction(t *testing.T) {
 	t.Parallel()
 
-	// Verify the instruction tells LLM to call transfer_to_agent function
-	assert.Contains(t, CoordinatorInstruction, "transfer_to_agent")
-	assert.Contains(t, CoordinatorInstruction, `transfer_to_agent(agent_name="perception_agent")`)
-	assert.Contains(t, CoordinatorInstruction, `transfer_to_agent(agent_name="action_agent")`)
+	instruction := BuildActionInstruction()
+
+	// Verify essential elements
+	assert.Contains(t, instruction, "action executor")
+	assert.Contains(t, instruction, "{next_action}") // Template variable for ADK state
+	assert.Contains(t, instruction, "click")
+	assert.Contains(t, instruction, "type_text")
+	assert.Contains(t, instruction, "key_press")
+	assert.Contains(t, instruction, "scroll")
+	assert.Contains(t, instruction, "wait")
+	assert.Contains(t, instruction, "drag")
+	assert.Contains(t, instruction, "Executed:")
+	assert.Contains(t, instruction, "Result:")
 }
 
-func TestCoordinatorInstruction_ContainsDecisionRules(t *testing.T) {
+func TestBuildPerceptionInstruction_ContainsPlatformContext(t *testing.T) {
 	t.Parallel()
 
-	// Verify decision rules are present
-	assert.Contains(t, CoordinatorInstruction, "ONE action at a time")
-	assert.Contains(t, CoordinatorInstruction, "3 consecutive failures")
-	assert.Contains(t, CoordinatorInstruction, "5 consecutive failures")
+	instruction := BuildPerceptionInstruction()
+
+	// Should contain platform info (using XML tags)
+	assert.Contains(t, instruction, "<platform>")
+	assert.Contains(t, instruction, "<os>")
 }
 
-func TestCoordinatorInstruction_ContainsSafetyGuidelines(t *testing.T) {
+func TestBuildDecisionInstruction_ContainsPlatformShortcuts(t *testing.T) {
 	t.Parallel()
 
-	// Verify safety guidelines are present
-	assert.Contains(t, CoordinatorInstruction, "passwords")
-	assert.Contains(t, CoordinatorInstruction, "sensitive")
-	assert.Contains(t, CoordinatorInstruction, "ads")
-	assert.Contains(t, CoordinatorInstruction, "destructive")
+	instruction := BuildDecisionInstruction()
+
+	// Should contain platform-specific keyboard info
+	assert.True(t, strings.Contains(instruction, "App launcher") ||
+		strings.Contains(instruction, "Primary modifier"),
+		"Decision instruction should contain platform keyboard info")
+}
+
+func TestBuildActionInstruction_ContainsToolUsageWarnings(t *testing.T) {
+	t.Parallel()
+
+	instruction := BuildActionInstruction()
+
+	// Verify tool usage warnings are present (to prevent agent prefixing issues)
+	assert.Contains(t, instruction, "EXECUTE EXACTLY")
+	assert.Contains(t, instruction, "without any prefix")
 }
 
 func TestDefaultCoordinatorConfig(t *testing.T) {
@@ -127,8 +109,7 @@ func TestDefaultCoordinatorConfig(t *testing.T) {
 
 	config := DefaultCoordinatorConfig()
 
-	assert.Equal(t, 50, config.MaxActions)
-	assert.Equal(t, "normal", config.SafetyLevel)
+	assert.Equal(t, 20, config.MaxIterations)
 }
 
 func TestCoordinatorConfig_Fields(t *testing.T) {
@@ -137,17 +118,15 @@ func TestCoordinatorConfig_Fields(t *testing.T) {
 	config := CoordinatorConfig{
 		CoordinatorModel: &mockLLM{},
 		SubAgentModel:    &mockLLM{},
-		MaxActions:       100,
-		SafetyLevel:      "strict",
+		MaxIterations:    30,
 	}
 
-	assert.Equal(t, 100, config.MaxActions)
-	assert.Equal(t, "strict", config.SafetyLevel)
+	assert.Equal(t, 30, config.MaxIterations)
 	assert.NotNil(t, config.CoordinatorModel)
 	assert.NotNil(t, config.SubAgentModel)
 }
 
-func TestPerceptionAgent_HasCorrectTools(t *testing.T) {
+func TestNewPerceptionAgent(t *testing.T) {
 	t.Parallel()
 
 	m := &mockLLM{}
@@ -155,13 +134,21 @@ func TestPerceptionAgent_HasCorrectTools(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.NotNil(t, agent)
-
-	// The agent should have been created with screenshot and find_element tools
-	// We verify this indirectly through the fact that creation succeeded
-	// Tool verification would require accessing internal state which ADK may not expose
+	assert.Equal(t, "perception", agent.Name())
 }
 
-func TestActionAgent_HasCorrectTools(t *testing.T) {
+func TestNewDecisionAgent(t *testing.T) {
+	t.Parallel()
+
+	m := &mockLLM{}
+	agent, err := NewDecisionAgent(m)
+
+	require.NoError(t, err)
+	assert.NotNil(t, agent)
+	assert.Equal(t, "decision", agent.Name())
+}
+
+func TestNewActionAgent(t *testing.T) {
 	t.Parallel()
 
 	m := &mockLLM{}
@@ -169,24 +156,7 @@ func TestActionAgent_HasCorrectTools(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.NotNil(t, agent)
-
-	// The agent should have been created with click, type, key_press, scroll, wait tools
-	// We verify this indirectly through the fact that creation succeeded
-}
-
-func TestCoordinatorAgent_HasSubAgents(t *testing.T) {
-	t.Parallel()
-
-	coordinatorModel := &mockLLM{}
-	subAgentModel := &mockLLM{}
-
-	agent, err := NewCoordinatorAgent(coordinatorModel, subAgentModel)
-
-	require.NoError(t, err)
-	assert.NotNil(t, agent)
-
-	// The coordinator should have perception_agent and action_agent as sub-agents
-	// We verify this indirectly through successful creation
+	assert.Equal(t, "action", agent.Name())
 }
 
 func TestLLM_TypeAlias(t *testing.T) {
@@ -195,4 +165,26 @@ func TestLLM_TypeAlias(t *testing.T) {
 	// Verify that LLM is an alias for model.LLM
 	var llm LLM = &mockLLM{}
 	assert.NotNil(t, llm)
+}
+
+func TestExitLoopArgs(t *testing.T) {
+	t.Parallel()
+
+	args := ExitLoopArgs{
+		Summary: "Task completed successfully",
+	}
+
+	assert.Equal(t, "Task completed successfully", args.Summary)
+}
+
+func TestExitLoopResult(t *testing.T) {
+	t.Parallel()
+
+	result := ExitLoopResult{
+		Success: true,
+		Summary: "Opened calculator and computed 42+8=50",
+	}
+
+	assert.True(t, result.Success)
+	assert.Equal(t, "Opened calculator and computed 42+8=50", result.Summary)
 }
