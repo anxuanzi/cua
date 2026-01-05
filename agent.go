@@ -11,6 +11,8 @@ import (
 	internalagent "github.com/anxuanzi/cua/internal/agent"
 	"github.com/anxuanzi/cua/internal/memory"
 	"github.com/anxuanzi/cua/internal/safety"
+	"github.com/anxuanzi/cua/pkg/logging"
+	"github.com/anxuanzi/cua/pkg/platform"
 	adkagent "google.golang.org/adk/agent"
 	"google.golang.org/adk/runner"
 	"google.golang.org/adk/session"
@@ -45,6 +47,15 @@ func newAgent(opts ...Option) (*Agent, error) {
 	for _, opt := range opts {
 		opt(cfg)
 	}
+
+	// Configure logging based on verbose setting
+	if cfg.verbose {
+		logging.SetLevel(logging.LevelDebug)
+	}
+
+	// Log platform info at startup
+	info := platform.Current()
+	logging.Info("CUA starting on %s (%s)", info.DisplayName, info.Arch)
 
 	// Check for API key
 	if cfg.apiKey == "" {

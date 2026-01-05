@@ -2,10 +2,14 @@ package tools
 
 import (
 	"fmt"
+	"strings"
 
+	"github.com/anxuanzi/cua/pkg/logging"
 	"google.golang.org/adk/tool"
 	"google.golang.org/adk/tool/functiontool"
 )
+
+var keyPressLog = logging.NewToolLogger("key_press")
 
 // KeyPressArgs defines the arguments for the key_press tool.
 type KeyPressArgs struct {
@@ -35,14 +39,23 @@ type KeyPressResult struct {
 // pressKey handles the key_press tool invocation.
 func pressKey(ctx tool.Context, args KeyPressArgs) (KeyPressResult, error) {
 	if args.Key == "" {
+		keyPressLog.Failure("key_press", fmt.Errorf("key cannot be empty"))
 		return KeyPressResult{
 			Success: false,
 			Error:   "key cannot be empty",
 		}, nil
 	}
 
+	// Format the key combination for logging
+	keyCombo := args.Key
+	if len(args.Modifiers) > 0 {
+		keyCombo = strings.Join(args.Modifiers, "+") + "+" + args.Key
+	}
+	keyPressLog.Start("key_press", keyCombo)
+
 	err := keyPressNative(args.Key, args.Modifiers)
 	if err != nil {
+		keyPressLog.Failure("key_press", err)
 		return KeyPressResult{
 			Success:   false,
 			Key:       args.Key,
@@ -51,6 +64,7 @@ func pressKey(ctx tool.Context, args KeyPressArgs) (KeyPressResult, error) {
 		}, nil
 	}
 
+	keyPressLog.Success("key_press", keyCombo)
 	return KeyPressResult{
 		Success:   true,
 		Key:       args.Key,

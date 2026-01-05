@@ -3,9 +3,12 @@ package tools
 import (
 	"fmt"
 
+	"github.com/anxuanzi/cua/pkg/logging"
 	"google.golang.org/adk/tool"
 	"google.golang.org/adk/tool/functiontool"
 )
+
+var typeTextLog = logging.NewToolLogger("type_text")
 
 // TypeTextArgs defines the arguments for the type_text tool.
 type TypeTextArgs struct {
@@ -28,15 +31,24 @@ type TypeTextResult struct {
 // typeText handles the type_text tool invocation.
 func typeText(ctx tool.Context, args TypeTextArgs) (TypeTextResult, error) {
 	if args.Text == "" {
+		typeTextLog.Failure("type_text", fmt.Errorf("text cannot be empty"))
 		return TypeTextResult{
 			Success: false,
 			Error:   "text cannot be empty",
 		}, nil
 	}
 
-	// Use CGo keyboard input (implemented in element package darwin.go)
+	// Truncate text for logging if too long
+	logText := args.Text
+	if len(logText) > 50 {
+		logText = logText[:47] + "..."
+	}
+	typeTextLog.Start("type_text", logText)
+
+	// Use robotgo keyboard input
 	err := typeTextNative(args.Text)
 	if err != nil {
+		typeTextLog.Failure("type_text", err)
 		return TypeTextResult{
 			Success: false,
 			Text:    args.Text,
@@ -44,6 +56,7 @@ func typeText(ctx tool.Context, args TypeTextArgs) (TypeTextResult, error) {
 		}, nil
 	}
 
+	typeTextLog.Success("type_text", logText)
 	return TypeTextResult{
 		Success: true,
 		Text:    args.Text,

@@ -14,10 +14,13 @@ import (
 	"image"
 	"image/png"
 
+	"github.com/anxuanzi/cua/pkg/logging"
 	"github.com/anxuanzi/cua/pkg/screen"
 	"google.golang.org/adk/tool"
 	"google.golang.org/adk/tool/functiontool"
 )
+
+var screenshotLog = logging.NewToolLogger("screenshot")
 
 // ScreenshotArgs defines the arguments for the screenshot tool.
 type ScreenshotArgs struct {
@@ -63,7 +66,7 @@ func takeScreenshot(ctx tool.Context, args ScreenshotArgs) (ScreenshotResult, er
 
 	// Capture based on arguments
 	if args.Region != nil {
-		// Capture a specific region
+		screenshotLog.Start("capture_region", args.Region.X, args.Region.Y, args.Region.Width, args.Region.Height)
 		img, err = screen.CaptureRect(screen.Rect{
 			X:      args.Region.X,
 			Y:      args.Region.Y,
@@ -71,20 +74,25 @@ func takeScreenshot(ctx tool.Context, args ScreenshotArgs) (ScreenshotResult, er
 			Height: args.Region.Height,
 		})
 	} else {
-		// Capture full display
+		screenshotLog.Start("capture_display", args.DisplayIndex)
 		img, err = screen.CaptureDisplay(args.DisplayIndex)
 	}
 
 	if err != nil {
+		screenshotLog.Failure("screenshot", err)
 		return ScreenshotResult{
 			Success: false,
 			Error:   fmt.Sprintf("failed to capture screen: %v", err),
 		}, nil
 	}
 
+	bounds := img.Bounds()
+	screenshotLog.Debug("captured image: %dx%d", bounds.Dx(), bounds.Dy())
+
 	// Encode to PNG
 	var buf bytes.Buffer
 	if err := png.Encode(&buf, img); err != nil {
+		screenshotLog.Failure("png_encode", err)
 		return ScreenshotResult{
 			Success: false,
 			Error:   fmt.Sprintf("failed to encode PNG: %v", err),
@@ -93,8 +101,8 @@ func takeScreenshot(ctx tool.Context, args ScreenshotArgs) (ScreenshotResult, er
 
 	// Convert to base64
 	base64Img := base64.StdEncoding.EncodeToString(buf.Bytes())
-	bounds := img.Bounds()
 
+	screenshotLog.Success("screenshot", fmt.Sprintf("%dx%d (%d bytes)", bounds.Dx(), bounds.Dy(), buf.Len()))
 	return ScreenshotResult{
 		Success:     true,
 		ImageBase64: base64Img,

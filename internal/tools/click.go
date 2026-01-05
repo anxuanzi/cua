@@ -4,9 +4,12 @@ import (
 	"fmt"
 
 	"github.com/anxuanzi/cua/pkg/input"
+	"github.com/anxuanzi/cua/pkg/logging"
 	"google.golang.org/adk/tool"
 	"google.golang.org/adk/tool/functiontool"
 )
+
+var clickLog = logging.NewToolLogger("click")
 
 // ClickArgs defines the arguments for the click tool.
 type ClickArgs struct {
@@ -46,6 +49,8 @@ func performClick(ctx tool.Context, args ClickArgs) (ClickResult, error) {
 		clickType = "left"
 	}
 
+	clickLog.Start("click", clickType, args.X, args.Y)
+
 	point := input.Point{X: args.X, Y: args.Y}
 	var err error
 
@@ -57,6 +62,7 @@ func performClick(ctx tool.Context, args ClickArgs) (ClickResult, error) {
 	case "double":
 		err = input.DoubleClick(point)
 	default:
+		clickLog.Failure("click", fmt.Errorf("invalid click type: %s", clickType))
 		return ClickResult{
 			Success:   false,
 			X:         args.X,
@@ -67,6 +73,7 @@ func performClick(ctx tool.Context, args ClickArgs) (ClickResult, error) {
 	}
 
 	if err != nil {
+		clickLog.Failure("click", err)
 		return ClickResult{
 			Success:   false,
 			X:         args.X,
@@ -76,6 +83,7 @@ func performClick(ctx tool.Context, args ClickArgs) (ClickResult, error) {
 		}, nil
 	}
 
+	clickLog.Success("click", fmt.Sprintf("(%d, %d) %s", args.X, args.Y, clickType))
 	return ClickResult{
 		Success:   true,
 		X:         args.X,
