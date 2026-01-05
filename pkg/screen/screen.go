@@ -1,6 +1,6 @@
 // Package screen provides cross-platform screen capture functionality.
 //
-// This package wraps github.com/kbinani/screenshot to provide a clean,
+// This package wraps github.com/go-vgo/robotgo to provide a clean,
 // consistent API for capturing screenshots on macOS, Windows, and Linux.
 //
 // # Basic Usage
@@ -27,7 +27,7 @@ import (
 	"image/png"
 	"io"
 
-	"github.com/kbinani/screenshot"
+	"github.com/go-vgo/robotgo"
 )
 
 // Rect represents a rectangle on screen in pixel coordinates.
@@ -67,23 +67,23 @@ var (
 
 // NumDisplays returns the number of active displays.
 func NumDisplays() int {
-	return screenshot.NumActiveDisplays()
+	return robotgo.DisplaysNum()
 }
 
 // Displays returns information about all connected displays.
 func Displays() []Display {
-	n := screenshot.NumActiveDisplays()
+	n := robotgo.DisplaysNum()
 	displays := make([]Display, n)
 
 	for i := 0; i < n; i++ {
-		bounds := screenshot.GetDisplayBounds(i)
+		x, y, w, h := robotgo.GetDisplayBounds(i)
 		displays[i] = Display{
 			Index: i,
 			Bounds: Rect{
-				X:      bounds.Min.X,
-				Y:      bounds.Min.Y,
-				Width:  bounds.Dx(),
-				Height: bounds.Dy(),
+				X:      x,
+				Y:      y,
+				Width:  w,
+				Height: h,
 			},
 			Primary: i == 0,
 		}
@@ -94,18 +94,18 @@ func Displays() []Display {
 
 // PrimaryDisplay returns information about the primary display.
 func PrimaryDisplay() (Display, error) {
-	if screenshot.NumActiveDisplays() == 0 {
+	if robotgo.DisplaysNum() == 0 {
 		return Display{}, ErrNoDisplays
 	}
 
-	bounds := screenshot.GetDisplayBounds(0)
+	x, y, w, h := robotgo.GetDisplayBounds(0)
 	return Display{
 		Index: 0,
 		Bounds: Rect{
-			X:      bounds.Min.X,
-			Y:      bounds.Min.Y,
-			Width:  bounds.Dx(),
-			Height: bounds.Dy(),
+			X:      x,
+			Y:      y,
+			Width:  w,
+			Height: h,
 		},
 		Primary: true,
 	}, nil
@@ -113,34 +113,39 @@ func PrimaryDisplay() (Display, error) {
 
 // GetDisplayBounds returns the bounds of the specified display.
 func GetDisplayBounds(displayIndex int) (Rect, error) {
-	n := screenshot.NumActiveDisplays()
+	n := robotgo.DisplaysNum()
 	if displayIndex < 0 || displayIndex >= n {
 		return Rect{}, ErrInvalidDisplay
 	}
 
-	bounds := screenshot.GetDisplayBounds(displayIndex)
+	x, y, w, h := robotgo.GetDisplayBounds(displayIndex)
 	return Rect{
-		X:      bounds.Min.X,
-		Y:      bounds.Min.Y,
-		Width:  bounds.Dx(),
-		Height: bounds.Dy(),
+		X:      x,
+		Y:      y,
+		Width:  w,
+		Height: h,
 	}, nil
 }
 
 // CaptureDisplay captures the entire screen of the specified display.
 // Display index 0 is the primary display.
 func CaptureDisplay(displayIndex int) (*image.RGBA, error) {
-	n := screenshot.NumActiveDisplays()
+	n := robotgo.DisplaysNum()
 	if displayIndex < 0 || displayIndex >= n {
 		return nil, ErrInvalidDisplay
 	}
 
-	img, err := screenshot.CaptureDisplay(displayIndex)
+	// Get display bounds
+	x, y, w, h := robotgo.GetDisplayBounds(displayIndex)
+
+	// Capture the display region
+	img, err := robotgo.CaptureImg(x, y, w, h)
 	if err != nil {
 		return nil, wrapError(err)
 	}
 
-	return img, nil
+	// Convert to RGBA if needed
+	return toRGBA(img), nil
 }
 
 // CapturePrimary captures the entire primary display.
@@ -156,13 +161,12 @@ func CaptureRect(rect Rect) (*image.RGBA, error) {
 		return nil, ErrInvalidRect
 	}
 
-	imgRect := image.Rect(rect.X, rect.Y, rect.X+rect.Width, rect.Y+rect.Height)
-	img, err := screenshot.CaptureRect(imgRect)
+	img, err := robotgo.CaptureImg(rect.X, rect.Y, rect.Width, rect.Height)
 	if err != nil {
 		return nil, wrapError(err)
 	}
 
-	return img, nil
+	return toRGBA(img), nil
 }
 
 // Capture captures a rectangular region specified by coordinates.
@@ -174,7 +178,7 @@ func Capture(x, y, width, height int) (*image.RGBA, error) {
 // CaptureAll captures all displays and returns them as a single combined image.
 // Displays are arranged according to their actual screen positions.
 func CaptureAll() (*image.RGBA, error) {
-	n := screenshot.NumActiveDisplays()
+	n := robotgo.DisplaysNum()
 	if n == 0 {
 		return nil, ErrNoDisplays
 	}
@@ -189,18 +193,18 @@ func CaptureAll() (*image.RGBA, error) {
 	maxX, maxY := 0, 0
 
 	for i := 0; i < n; i++ {
-		bounds := screenshot.GetDisplayBounds(i)
-		if i == 0 || bounds.Min.X < minX {
-			minX = bounds.Min.X
+		x, y, w, h := robotgo.GetDisplayBounds(i)
+		if i == 0 || x < minX {
+			minX = x
 		}
-		if i == 0 || bounds.Min.Y < minY {
-			minY = bounds.Min.Y
+		if i == 0 || y < minY {
+			minY = y
 		}
-		if i == 0 || bounds.Max.X > maxX {
-			maxX = bounds.Max.X
+		if i == 0 || x+w > maxX {
+			maxX = x + w
 		}
-		if i == 0 || bounds.Max.Y > maxY {
-			maxY = bounds.Max.Y
+		if i == 0 || y+h > maxY {
+			maxY = y + h
 		}
 	}
 
@@ -216,6 +220,63 @@ func CaptureAll() (*image.RGBA, error) {
 // SavePNG saves an image to a writer in PNG format.
 func SavePNG(w io.Writer, img image.Image) error {
 	return png.Encode(w, img)
+}
+
+// ScaleFactor returns the display scale factor for the primary display.
+// On Retina displays this is typically 2.0, on standard displays it's 1.0.
+// This is calculated by comparing the logical display bounds with the
+// actual captured image resolution.
+func ScaleFactor() float64 {
+	// Get logical bounds from display
+	_, _, logicalW, logicalH := robotgo.GetDisplayBounds(0)
+	if logicalW == 0 || logicalH == 0 {
+		return 1.0
+	}
+
+	// Capture a small region to determine physical pixel ratio
+	img, err := robotgo.CaptureImg(0, 0, 10, 10)
+	if err != nil {
+		return 1.0
+	}
+
+	physicalW := img.Bounds().Dx()
+	if physicalW == 0 {
+		return 1.0
+	}
+
+	// Scale is physical/logical
+	return float64(physicalW) / 10.0
+}
+
+// PhysicalToLogical converts physical pixel coordinates (from screenshot)
+// to logical coordinates (for mouse input).
+// Use this when the AI model provides coordinates from a screenshot.
+func PhysicalToLogical(physicalX, physicalY int) (logicalX, logicalY int) {
+	scale := ScaleFactor()
+	return int(float64(physicalX) / scale), int(float64(physicalY) / scale)
+}
+
+// LogicalToPhysical converts logical coordinates (mouse input)
+// to physical pixel coordinates (screenshot).
+func LogicalToPhysical(logicalX, logicalY int) (physicalX, physicalY int) {
+	scale := ScaleFactor()
+	return int(float64(logicalX) * scale), int(float64(logicalY) * scale)
+}
+
+// toRGBA converts any image.Image to *image.RGBA.
+func toRGBA(img image.Image) *image.RGBA {
+	if rgba, ok := img.(*image.RGBA); ok {
+		return rgba
+	}
+
+	bounds := img.Bounds()
+	rgba := image.NewRGBA(bounds)
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			rgba.Set(x, y, img.At(x, y))
+		}
+	}
+	return rgba
 }
 
 // wrapError wraps screenshot errors with our error types.

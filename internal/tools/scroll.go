@@ -4,17 +4,18 @@ import (
 	"fmt"
 
 	"github.com/anxuanzi/cua/pkg/input"
+	"github.com/anxuanzi/cua/pkg/screen"
 	"google.golang.org/adk/tool"
 	"google.golang.org/adk/tool/functiontool"
 )
 
 // ScrollArgs defines the arguments for the scroll tool.
 type ScrollArgs struct {
-	// X is the X coordinate where scrolling occurs.
-	X int `json:"x" jsonschema:"X coordinate in screen pixels where scroll occurs"`
+	// X is the X coordinate where scrolling occurs (in physical pixels from screenshot).
+	X int `json:"x" jsonschema:"X coordinate in physical pixels (from screenshot) where scroll occurs"`
 
-	// Y is the Y coordinate where scrolling occurs.
-	Y int `json:"y" jsonschema:"Y coordinate in screen pixels where scroll occurs"`
+	// Y is the Y coordinate where scrolling occurs (in physical pixels from screenshot).
+	Y int `json:"y" jsonschema:"Y coordinate in physical pixels (from screenshot) where scroll occurs"`
 
 	// DeltaX is horizontal scroll amount. Positive = right, negative = left.
 	DeltaX int `json:"delta_x,omitzero" jsonschema:"Horizontal scroll amount (positive = right, negative = left)"`
@@ -78,7 +79,9 @@ func performScroll(ctx tool.Context, args ScrollArgs) (ScrollResult, error) {
 
 // scrollNative performs a scroll operation using robotgo.
 func scrollNative(x, y, deltaX, deltaY int) error {
-	return input.ScrollAt(input.Point{X: x, Y: y}, deltaX, deltaY)
+	// Convert physical pixels (from screenshot) to logical coordinates (for mouse)
+	logicalX, logicalY := screen.PhysicalToLogical(x, y)
+	return input.ScrollAt(input.Point{X: logicalX, Y: logicalY}, deltaX, deltaY)
 }
 
 // NewScrollTool creates the scroll tool for ADK agents.

@@ -5,6 +5,7 @@ import (
 
 	"github.com/anxuanzi/cua/pkg/input"
 	"github.com/anxuanzi/cua/pkg/logging"
+	"github.com/anxuanzi/cua/pkg/screen"
 	"google.golang.org/adk/tool"
 	"google.golang.org/adk/tool/functiontool"
 )
@@ -13,11 +14,13 @@ var clickLog = logging.NewToolLogger("click")
 
 // ClickArgs defines the arguments for the click tool.
 type ClickArgs struct {
-	// X is the X coordinate to click.
-	X int `json:"x" jsonschema:"X coordinate in screen pixels"`
+	// X is the X coordinate to click (in physical pixels from screenshot).
+	// Automatically converted to logical coordinates for mouse input.
+	X int `json:"x" jsonschema:"X coordinate in physical pixels (from screenshot)"`
 
-	// Y is the Y coordinate to click.
-	Y int `json:"y" jsonschema:"Y coordinate in screen pixels"`
+	// Y is the Y coordinate to click (in physical pixels from screenshot).
+	// Automatically converted to logical coordinates for mouse input.
+	Y int `json:"y" jsonschema:"Y coordinate in physical pixels (from screenshot)"`
 
 	// ClickType specifies the type of click: "left", "right", or "double".
 	// Defaults to "left" if not specified.
@@ -49,9 +52,11 @@ func performClick(ctx tool.Context, args ClickArgs) (ClickResult, error) {
 		clickType = "left"
 	}
 
-	clickLog.Start("click", clickType, args.X, args.Y)
+	// Convert physical pixels (from screenshot) to logical coordinates (for mouse)
+	logicalX, logicalY := screen.PhysicalToLogical(args.X, args.Y)
+	clickLog.Start("click", clickType, args.X, args.Y, "→", logicalX, logicalY)
 
-	point := input.Point{X: args.X, Y: args.Y}
+	point := input.Point{X: logicalX, Y: logicalY}
 	var err error
 
 	switch clickType {

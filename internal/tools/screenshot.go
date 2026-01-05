@@ -49,11 +49,16 @@ type ScreenshotResult struct {
 	// This can be sent to vision models for analysis.
 	ImageBase64 string `json:"image_base64,omitempty"`
 
-	// Width is the image width in pixels.
+	// Width is the image width in physical pixels.
 	Width int `json:"width,omitempty"`
 
-	// Height is the image height in pixels.
+	// Height is the image height in physical pixels.
 	Height int `json:"height,omitempty"`
+
+	// ScaleFactor is the display scale factor (e.g., 2.0 for Retina).
+	// Coordinates from this image are in physical pixels.
+	// The click tool automatically converts these to logical coordinates.
+	ScaleFactor float64 `json:"scale_factor,omitempty"`
 
 	// Error contains any error message.
 	Error string `json:"error,omitempty"`
@@ -102,12 +107,14 @@ func takeScreenshot(ctx tool.Context, args ScreenshotArgs) (ScreenshotResult, er
 	// Convert to base64
 	base64Img := base64.StdEncoding.EncodeToString(buf.Bytes())
 
-	screenshotLog.Success("screenshot", fmt.Sprintf("%dx%d (%d bytes)", bounds.Dx(), bounds.Dy(), buf.Len()))
+	scaleFactor := screen.ScaleFactor()
+	screenshotLog.Success("screenshot", fmt.Sprintf("%dx%d (%d bytes, scale=%.2f)", bounds.Dx(), bounds.Dy(), buf.Len(), scaleFactor))
 	return ScreenshotResult{
 		Success:     true,
 		ImageBase64: base64Img,
 		Width:       bounds.Dx(),
 		Height:      bounds.Dy(),
+		ScaleFactor: scaleFactor,
 	}, nil
 }
 

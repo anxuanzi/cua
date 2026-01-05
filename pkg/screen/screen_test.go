@@ -82,6 +82,20 @@ func TestGetDisplayBounds(t *testing.T) {
 	}
 }
 
+func TestScaleFactor(t *testing.T) {
+	if runtime.GOOS == "linux" {
+		t.Skip("Skipping on Linux CI - may not have display")
+	}
+
+	scale := ScaleFactor()
+	t.Logf("Display scale factor: %.2f", scale)
+
+	// Scale should be between 1.0 and 3.0 for reasonable displays
+	if scale < 1.0 || scale > 3.0 {
+		t.Errorf("ScaleFactor() = %.2f, want between 1.0 and 3.0", scale)
+	}
+}
+
 func TestCaptureDisplay(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping screenshot test in short mode")
@@ -148,8 +162,9 @@ func TestCaptureRect(t *testing.T) {
 		t.Skip("Skipping on Linux CI - may not have display")
 	}
 
-	// Capture a small region
-	img, err := CaptureRect(Rect{X: 0, Y: 0, Width: 100, Height: 100})
+	// Capture a small region (in logical coordinates)
+	logicalWidth, logicalHeight := 100, 100
+	img, err := CaptureRect(Rect{X: 0, Y: 0, Width: logicalWidth, Height: logicalHeight})
 	if err != nil {
 		t.Fatalf("CaptureRect() error: %v", err)
 	}
@@ -159,8 +174,18 @@ func TestCaptureRect(t *testing.T) {
 	}
 
 	bounds := img.Bounds()
-	if bounds.Dx() != 100 || bounds.Dy() != 100 {
-		t.Errorf("CaptureRect() dimensions = %dx%d, want 100x100", bounds.Dx(), bounds.Dy())
+	scale := ScaleFactor()
+
+	// Captured image is at physical resolution (logical * scale)
+	expectedWidth := int(float64(logicalWidth) * scale)
+	expectedHeight := int(float64(logicalHeight) * scale)
+
+	t.Logf("CaptureRect(%dx%d logical) = %dx%d physical (scale=%.2f)",
+		logicalWidth, logicalHeight, bounds.Dx(), bounds.Dy(), scale)
+
+	if bounds.Dx() != expectedWidth || bounds.Dy() != expectedHeight {
+		t.Errorf("CaptureRect() dimensions = %dx%d, want %dx%d (at scale %.2f)",
+			bounds.Dx(), bounds.Dy(), expectedWidth, expectedHeight, scale)
 	}
 }
 
@@ -194,7 +219,8 @@ func TestCapture(t *testing.T) {
 		t.Skip("Skipping on Linux CI - may not have display")
 	}
 
-	img, err := Capture(10, 10, 50, 50)
+	logicalWidth, logicalHeight := 50, 50
+	img, err := Capture(10, 10, logicalWidth, logicalHeight)
 	if err != nil {
 		t.Fatalf("Capture() error: %v", err)
 	}
@@ -204,8 +230,18 @@ func TestCapture(t *testing.T) {
 	}
 
 	bounds := img.Bounds()
-	if bounds.Dx() != 50 || bounds.Dy() != 50 {
-		t.Errorf("Capture() dimensions = %dx%d, want 50x50", bounds.Dx(), bounds.Dy())
+	scale := ScaleFactor()
+
+	// Captured image is at physical resolution
+	expectedWidth := int(float64(logicalWidth) * scale)
+	expectedHeight := int(float64(logicalHeight) * scale)
+
+	t.Logf("Capture(%dx%d logical) = %dx%d physical (scale=%.2f)",
+		logicalWidth, logicalHeight, bounds.Dx(), bounds.Dy(), scale)
+
+	if bounds.Dx() != expectedWidth || bounds.Dy() != expectedHeight {
+		t.Errorf("Capture() dimensions = %dx%d, want %dx%d (at scale %.2f)",
+			bounds.Dx(), bounds.Dy(), expectedWidth, expectedHeight, scale)
 	}
 }
 
@@ -230,7 +266,8 @@ func TestSavePNG(t *testing.T) {
 		t.Skip("Skipping on Linux CI - may not have display")
 	}
 
-	img, err := Capture(0, 0, 100, 100)
+	logicalWidth, logicalHeight := 100, 100
+	img, err := Capture(0, 0, logicalWidth, logicalHeight)
 	if err != nil {
 		t.Fatalf("Capture() error: %v", err)
 	}
@@ -251,9 +288,13 @@ func TestSavePNG(t *testing.T) {
 	}
 
 	decodedBounds := decoded.Bounds()
-	if decodedBounds.Dx() != 100 || decodedBounds.Dy() != 100 {
-		t.Errorf("Decoded image dimensions = %dx%d, want 100x100",
-			decodedBounds.Dx(), decodedBounds.Dy())
+	scale := ScaleFactor()
+	expectedWidth := int(float64(logicalWidth) * scale)
+	expectedHeight := int(float64(logicalHeight) * scale)
+
+	if decodedBounds.Dx() != expectedWidth || decodedBounds.Dy() != expectedHeight {
+		t.Errorf("Decoded image dimensions = %dx%d, want %dx%d (at scale %.2f)",
+			decodedBounds.Dx(), decodedBounds.Dy(), expectedWidth, expectedHeight, scale)
 	}
 }
 
@@ -278,10 +319,82 @@ func TestCaptureAll(t *testing.T) {
 	bounds := img.Bounds()
 	t.Logf("CaptureAll() dimensions: %dx%d", bounds.Dx(), bounds.Dy())
 
-	// Should be at least as big as primary display
+	// Should be at least as big as primary display (accounting for scale)
 	primary, _ := PrimaryDisplay()
-	if bounds.Dx() < primary.Bounds.Width || bounds.Dy() < primary.Bounds.Height {
-		t.Errorf("CaptureAll() smaller than primary display: got %dx%d, primary is %dx%d",
-			bounds.Dx(), bounds.Dy(), primary.Bounds.Width, primary.Bounds.Height)
+	scale := ScaleFactor()
+	expectedMinWidth := int(float64(primary.Bounds.Width) * scale)
+	expectedMinHeight := int(float64(primary.Bounds.Height) * scale)
+
+	if bounds.Dx() < expectedMinWidth || bounds.Dy() < expectedMinHeight {
+		t.Errorf("CaptureAll() smaller than primary display: got %dx%d, expected at least %dx%d (scale %.2f)",
+			bounds.Dx(), bounds.Dy(), expectedMinWidth, expectedMinHeight, scale)
+	}
+}
+
+func TestPhysicalToLogical(t *testing.T) {
+	if runtime.GOOS == "linux" {
+		t.Skip("Skipping on Linux CI - may not have display")
+	}
+
+	scale := ScaleFactor()
+	t.Logf("Scale factor: %.2f", scale)
+
+	// Test coordinate conversion
+	physicalX, physicalY := 200, 400
+	logicalX, logicalY := PhysicalToLogical(physicalX, physicalY)
+
+	expectedLogicalX := int(float64(physicalX) / scale)
+	expectedLogicalY := int(float64(physicalY) / scale)
+
+	if logicalX != expectedLogicalX || logicalY != expectedLogicalY {
+		t.Errorf("PhysicalToLogical(%d, %d) = (%d, %d), want (%d, %d)",
+			physicalX, physicalY, logicalX, logicalY, expectedLogicalX, expectedLogicalY)
+	}
+
+	t.Logf("PhysicalToLogical(%d, %d) = (%d, %d)", physicalX, physicalY, logicalX, logicalY)
+}
+
+func TestLogicalToPhysical(t *testing.T) {
+	if runtime.GOOS == "linux" {
+		t.Skip("Skipping on Linux CI - may not have display")
+	}
+
+	scale := ScaleFactor()
+	t.Logf("Scale factor: %.2f", scale)
+
+	// Test coordinate conversion
+	logicalX, logicalY := 100, 200
+	physicalX, physicalY := LogicalToPhysical(logicalX, logicalY)
+
+	expectedPhysicalX := int(float64(logicalX) * scale)
+	expectedPhysicalY := int(float64(logicalY) * scale)
+
+	if physicalX != expectedPhysicalX || physicalY != expectedPhysicalY {
+		t.Errorf("LogicalToPhysical(%d, %d) = (%d, %d), want (%d, %d)",
+			logicalX, logicalY, physicalX, physicalY, expectedPhysicalX, expectedPhysicalY)
+	}
+
+	t.Logf("LogicalToPhysical(%d, %d) = (%d, %d)", logicalX, logicalY, physicalX, physicalY)
+}
+
+func TestCoordinateRoundTrip(t *testing.T) {
+	if runtime.GOOS == "linux" {
+		t.Skip("Skipping on Linux CI - may not have display")
+	}
+
+	// Test that converting logical -> physical -> logical gives same result
+	// (for coordinates that are exact multiples of scale)
+	scale := ScaleFactor()
+	if scale != float64(int(scale)) {
+		t.Skip("Skipping round-trip test for non-integer scale factors")
+	}
+
+	logicalX, logicalY := 100, 200
+	physicalX, physicalY := LogicalToPhysical(logicalX, logicalY)
+	backLogicalX, backLogicalY := PhysicalToLogical(physicalX, physicalY)
+
+	if backLogicalX != logicalX || backLogicalY != logicalY {
+		t.Errorf("Round-trip failed: (%d,%d) -> (%d,%d) -> (%d,%d)",
+			logicalX, logicalY, physicalX, physicalY, backLogicalX, backLogicalY)
 	}
 }

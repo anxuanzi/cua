@@ -4,7 +4,7 @@ go 1.25.5
 
 require (
 	github.com/go-vgo/robotgo v1.0.0
-	github.com/kbinani/screenshot v0.0.0-20250624051815-089614a94018
+	github.com/joho/godotenv v1.5.1
 	github.com/stretchr/testify v1.11.1
 	google.golang.org/adk v0.3.1-0.20260102172107-70d35b78fde2
 	google.golang.org/genai v1.40.0
@@ -32,9 +32,7 @@ require (
 	github.com/googleapis/gax-go/v2 v2.15.0 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/jezek/xgb v1.2.0 // indirect
-	github.com/joho/godotenv v1.5.1 // indirect
 	github.com/lufia/plan9stats v0.0.0-20251013123823-9fd1530e3ec3 // indirect
-	github.com/lxn/win v0.0.0-20210218163916-a377121e959e // indirect
 	github.com/otiai10/gosseract/v2 v2.4.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect

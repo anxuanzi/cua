@@ -5,23 +5,24 @@ import (
 	"fmt"
 
 	"github.com/anxuanzi/cua/pkg/input"
+	"github.com/anxuanzi/cua/pkg/screen"
 	"google.golang.org/adk/tool"
 	"google.golang.org/adk/tool/functiontool"
 )
 
 // DragArgs defines the arguments for the drag tool.
 type DragArgs struct {
-	// StartX is the starting X coordinate in screen pixels.
-	StartX int `json:"start_x" jsonschema:"Starting X coordinate in screen pixels"`
+	// StartX is the starting X coordinate (in physical pixels from screenshot).
+	StartX int `json:"start_x" jsonschema:"Starting X coordinate in physical pixels (from screenshot)"`
 
-	// StartY is the starting Y coordinate in screen pixels.
-	StartY int `json:"start_y" jsonschema:"Starting Y coordinate in screen pixels"`
+	// StartY is the starting Y coordinate (in physical pixels from screenshot).
+	StartY int `json:"start_y" jsonschema:"Starting Y coordinate in physical pixels (from screenshot)"`
 
-	// EndX is the ending X coordinate in screen pixels.
-	EndX int `json:"end_x" jsonschema:"Ending X coordinate in screen pixels"`
+	// EndX is the ending X coordinate (in physical pixels from screenshot).
+	EndX int `json:"end_x" jsonschema:"Ending X coordinate in physical pixels (from screenshot)"`
 
-	// EndY is the ending Y coordinate in screen pixels.
-	EndY int `json:"end_y" jsonschema:"Ending Y coordinate in screen pixels"`
+	// EndY is the ending Y coordinate (in physical pixels from screenshot).
+	EndY int `json:"end_y" jsonschema:"Ending Y coordinate in physical pixels (from screenshot)"`
 }
 
 // DragResult contains the result of a drag operation.
@@ -103,8 +104,12 @@ func performDrag(ctx tool.Context, args DragArgs) (DragResult, error) {
 
 // dragNative performs a drag operation using the input package.
 func dragNative(startX, startY, endX, endY int) error {
-	start := input.Point{X: startX, Y: startY}
-	end := input.Point{X: endX, Y: endY}
+	// Convert physical pixels (from screenshot) to logical coordinates (for mouse)
+	logicalStartX, logicalStartY := screen.PhysicalToLogical(startX, startY)
+	logicalEndX, logicalEndY := screen.PhysicalToLogical(endX, endY)
+
+	start := input.Point{X: logicalStartX, Y: logicalStartY}
+	end := input.Point{X: logicalEndX, Y: logicalEndY}
 	return input.Drag(start, end)
 }
 
