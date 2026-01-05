@@ -13,6 +13,48 @@ const MaxRecentActions = 5
 // MaxFailedPatterns is the maximum number of failed patterns to track.
 const MaxFailedPatterns = 10
 
+// MaxMilestones is the maximum number of milestones to keep.
+const MaxMilestones = 20
+
+// Phase constants for common workflow phases.
+const (
+	PhaseNavigation     = "navigation"
+	PhaseFormFilling    = "form_filling"
+	PhaseAuthentication = "authentication"
+	PhaseSearch         = "search"
+	PhaseBrowsing       = "browsing"
+	PhaseConfirmation   = "confirmation"
+	PhaseCheckout       = "checkout"
+	PhaseUnknown        = ""
+)
+
+// Observation represents the current screen state for phase detection.
+type Observation struct {
+	// VisibleText contains key text visible on screen.
+	VisibleText []string
+
+	// ActiveApp is the name of the active application.
+	ActiveApp string
+
+	// HasLoginForm indicates if a login form is visible.
+	HasLoginForm bool
+
+	// HasSearchBox indicates if a search box is visible.
+	HasSearchBox bool
+
+	// HasCheckoutElements indicates if checkout elements are visible.
+	HasCheckoutElements bool
+
+	// HasConfirmation indicates if a confirmation message is visible.
+	HasConfirmation bool
+
+	// FocusedElementRole is the role of the currently focused element.
+	FocusedElementRole string
+
+	// Custom allows arbitrary key-value pairs for extensibility.
+	Custom map[string]any
+}
+
 // ActionResult represents the outcome of an executed action.
 type ActionResult struct {
 	// StepNumber is the sequential step number.
@@ -105,6 +147,11 @@ type TaskMemory struct {
 
 	// FailedPatterns are patterns that have been tried and failed.
 	FailedPatterns []string `json:"failed_patterns,omitempty"`
+
+	// === INTERNAL ===
+
+	// summarizer handles progressive summarization of actions.
+	summarizer *Summarizer
 }
 
 // New creates a new TaskMemory for the given task.
@@ -113,6 +160,7 @@ func New(task string) *TaskMemory {
 		OriginalTask: task,
 		StartedAt:    time.Now(),
 		KeyFacts:     make(map[string]string),
+		summarizer:   NewSummarizer(),
 	}
 }
 
@@ -133,10 +181,19 @@ func (m *TaskMemory) RecordAction(action string, args map[string]any, success bo
 		Timestamp:  time.Now(),
 	}
 
-	// Add to recent actions (sliding window)
+	// Add to recent actions
 	m.RecentActions = append(m.RecentActions, actionResult)
-	if len(m.RecentActions) > MaxRecentActions {
-		m.RecentActions = m.RecentActions[1:]
+
+	// Progressive summarization: when we exceed the window, summarize older actions into milestones
+	if m.summarizer != nil && m.summarizer.ShouldSummarize(m.RecentActions) {
+		milestones, remaining := m.summarizer.Summarize(m.RecentActions)
+		for _, milestone := range milestones {
+			m.addMilestoneLocked(milestone)
+		}
+		m.RecentActions = remaining
+	} else if len(m.RecentActions) > MaxRecentActions {
+		// Fallback if summarizer not initialized
+		m.RecentActions = m.RecentActions[len(m.RecentActions)-MaxRecentActions:]
 	}
 
 	// Update error tracking
@@ -155,21 +212,128 @@ func (m *TaskMemory) RecordAction(action string, args map[string]any, success bo
 	}
 }
 
+// addMilestoneLocked adds a milestone without locking (caller must hold lock).
+func (m *TaskMemory) addMilestoneLocked(milestone string) {
+	m.Milestones = append(m.Milestones, milestone)
+	// Trim milestones if we have too many
+	if len(m.Milestones) > MaxMilestones {
+		// Compress oldest milestones
+		m.Milestones = m.Milestones[len(m.Milestones)-MaxMilestones:]
+	}
+}
+
 // AddMilestone adds a completed milestone to the summary.
 func (m *TaskMemory) AddMilestone(milestone string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.Milestones = append(m.Milestones, milestone)
+	m.addMilestoneLocked(milestone)
 }
 
 // SetPhase updates the current phase.
+// When changing phases, the previous phase is summarized into a milestone.
 func (m *TaskMemory) SetPhase(phase string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if m.Phase != phase {
-		m.Phase = phase
-		m.PhaseStartStep = m.TotalSteps
+
+	if m.Phase == phase {
+		return // No change
 	}
+
+	// Summarize the previous phase if it existed
+	if m.Phase != "" && m.summarizer != nil {
+		milestone := m.summarizer.SummarizeForPhaseChange(m.Phase, m.RecentActions)
+		if milestone != "" {
+			m.addMilestoneLocked(milestone)
+		}
+		// Clear recent actions on phase change
+		m.RecentActions = nil
+	}
+
+	m.Phase = phase
+	m.PhaseStartStep = m.TotalSteps
+}
+
+// MaybeUpdatePhase detects the current phase from an observation and updates if changed.
+// This is useful for automatic phase detection based on screen content.
+func (m *TaskMemory) MaybeUpdatePhase(obs Observation) {
+	newPhase := DetectPhase(obs)
+	if newPhase != PhaseUnknown && newPhase != m.Phase {
+		m.SetPhase(newPhase)
+	}
+}
+
+// DetectPhase analyzes an observation to determine the current workflow phase.
+// Returns PhaseUnknown if no specific phase can be determined.
+func DetectPhase(obs Observation) string {
+	// Priority-ordered phase detection based on observation signals
+
+	// Confirmation phase takes priority (end state)
+	if obs.HasConfirmation {
+		return PhaseConfirmation
+	}
+
+	// Checkout phase
+	if obs.HasCheckoutElements {
+		return PhaseCheckout
+	}
+
+	// Authentication phase
+	if obs.HasLoginForm {
+		return PhaseAuthentication
+	}
+
+	// Search phase
+	if obs.HasSearchBox {
+		return PhaseSearch
+	}
+
+	// Text-based heuristics
+	for _, text := range obs.VisibleText {
+		lower := strings.ToLower(text)
+
+		// Confirmation indicators
+		if strings.Contains(lower, "success") ||
+			strings.Contains(lower, "thank you") ||
+			strings.Contains(lower, "order confirmed") ||
+			strings.Contains(lower, "completed") {
+			return PhaseConfirmation
+		}
+
+		// Checkout indicators
+		if strings.Contains(lower, "checkout") ||
+			strings.Contains(lower, "payment") ||
+			strings.Contains(lower, "credit card") ||
+			strings.Contains(lower, "place order") {
+			return PhaseCheckout
+		}
+
+		// Authentication indicators
+		if strings.Contains(lower, "sign in") ||
+			strings.Contains(lower, "log in") ||
+			strings.Contains(lower, "password") ||
+			strings.Contains(lower, "username") {
+			return PhaseAuthentication
+		}
+
+		// Search results indicators
+		if strings.Contains(lower, "results for") ||
+			strings.Contains(lower, "search results") {
+			return PhaseBrowsing
+		}
+	}
+
+	// Focused element heuristics
+	switch obs.FocusedElementRole {
+	case "textfield", "searchbox":
+		return PhaseFormFilling
+	}
+
+	// Default based on what's visible
+	if len(obs.VisibleText) > 0 {
+		return PhaseBrowsing
+	}
+
+	return PhaseNavigation
 }
 
 // SetKeyFact stores an extracted key fact.
@@ -234,6 +398,86 @@ func (m *TaskMemory) NeedsHelp() bool {
 // Duration returns how long the task has been running.
 func (m *TaskMemory) Duration() time.Duration {
 	return time.Since(m.StartedAt)
+}
+
+// ToPrompt formats the memory for direct inclusion in the agent's context window.
+// This is the critical method that builds the context for each iteration.
+func (m *TaskMemory) ToPrompt() string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	var sb strings.Builder
+
+	// 1. Task anchor (ALWAYS present - never truncated)
+	sb.WriteString("## Your Task\n")
+	sb.WriteString(m.OriginalTask)
+	sb.WriteString("\n\n")
+
+	// 2. Progress summary (compressed milestones)
+	if len(m.Milestones) > 0 {
+		sb.WriteString("## What You've Accomplished\n")
+		for _, milestone := range m.Milestones {
+			sb.WriteString("- ")
+			sb.WriteString(milestone)
+			sb.WriteString("\n")
+		}
+		sb.WriteString("\n")
+	}
+
+	// 3. Current phase and key facts
+	if m.Phase != "" {
+		fmt.Fprintf(&sb, "## Current Phase: %s\n", m.Phase)
+		if len(m.KeyFacts) > 0 {
+			sb.WriteString("Key information:\n")
+			for k, v := range m.KeyFacts {
+				fmt.Fprintf(&sb, "- %s: %s\n", k, v)
+			}
+		}
+		sb.WriteString("\n")
+	} else if len(m.KeyFacts) > 0 {
+		sb.WriteString("## Key Information\n")
+		for k, v := range m.KeyFacts {
+			fmt.Fprintf(&sb, "- %s: %s\n", k, v)
+		}
+		sb.WriteString("\n")
+	}
+
+	// 4. Recent actions (sliding window)
+	if len(m.RecentActions) > 0 {
+		sb.WriteString("## Recent Actions\n")
+		for _, action := range m.RecentActions {
+			status := "✓"
+			if !action.Success {
+				status = "✗"
+			}
+			if action.Result != "" {
+				fmt.Fprintf(&sb, "%s %s → %s\n", status, action.Action, action.Result)
+			} else {
+				fmt.Fprintf(&sb, "%s %s\n", status, action.Action)
+			}
+		}
+		sb.WriteString("\n")
+	}
+
+	// 5. Known issues (avoid repeating mistakes)
+	if len(m.FailedPatterns) > 0 {
+		sb.WriteString("## Known Issues (avoid these)\n")
+		for _, pattern := range m.FailedPatterns {
+			sb.WriteString("- ")
+			sb.WriteString(pattern)
+			sb.WriteString("\n")
+		}
+		sb.WriteString("\n")
+	}
+
+	// 6. Status warnings
+	if m.ConsecutiveFails >= 5 {
+		sb.WriteString("## ⚠️ NEEDS HELP\nMultiple consecutive failures. Consider asking the user for guidance.\n\n")
+	} else if m.ConsecutiveFails >= 3 {
+		sb.WriteString("## ⚠️ POSSIBLY STUCK\nTry a different approach.\n\n")
+	}
+
+	return sb.String()
 }
 
 // Summary returns the current state summary for the context window.

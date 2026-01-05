@@ -19,6 +19,7 @@ Your job: Execute desktop actions reliably and verify they succeeded.
 - Type text into focused elements
 - Press keyboard keys with optional modifiers
 - Scroll the mouse wheel
+- Drag from one position to another (for moving elements, resizing, selecting)
 - Wait for specified durations
 
 ## Execution Rules
@@ -76,10 +77,15 @@ func NewActionAgent(m model.LLM) (agent.Agent, error) {
 		return nil, err
 	}
 
+	dragTool, err := tools.NewDragTool()
+	if err != nil {
+		return nil, err
+	}
+
 	return llmagent.New(llmagent.Config{
 		Name:        "action_agent",
 		Model:       m,
-		Description: "Executes desktop actions like clicking, typing, and scrolling.",
+		Description: "Executes desktop actions like clicking, typing, scrolling, and dragging.",
 		Instruction: ActionInstruction,
 		Tools: []tool.Tool{
 			clickTool,
@@ -87,6 +93,7 @@ func NewActionAgent(m model.LLM) (agent.Agent, error) {
 			keyPressTool,
 			scrollTool,
 			waitTool,
+			dragTool,
 		},
 	})
 }

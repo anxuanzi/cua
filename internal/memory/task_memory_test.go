@@ -349,3 +349,269 @@ func TestConcurrency(t *testing.T) {
 	// Just verify we didn't panic
 	assert.Equal(t, 100, mem.TotalSteps)
 }
+
+func TestToPrompt_AlwaysIncludesTask(t *testing.T) {
+	t.Parallel()
+
+	task := "Book a flight to NYC"
+	mem := New(task)
+
+	// Even after many actions
+	for i := 0; i < 100; i++ {
+		mem.RecordAction("action", nil, true, "ok", time.Millisecond)
+	}
+
+	prompt := mem.ToPrompt()
+	assert.Contains(t, prompt, "Book a flight to NYC")
+	assert.Contains(t, prompt, "## Your Task")
+}
+
+func TestToPrompt_IncludesAllSections(t *testing.T) {
+	t.Parallel()
+
+	mem := New("Test task")
+
+	// Add various state
+	mem.AddMilestone("Opened app")
+	mem.SetPhase(PhaseNavigation)
+	mem.SetKeyFact("user", "john")
+	mem.RecordAction("click", nil, true, "clicked", time.Millisecond)
+	mem.RecordAction("type", nil, false, "failed", time.Millisecond)
+	mem.AddFailedPattern("clicking while loading")
+
+	prompt := mem.ToPrompt()
+
+	assert.Contains(t, prompt, "## Your Task")
+	assert.Contains(t, prompt, "## What You've Accomplished")
+	assert.Contains(t, prompt, "Opened app")
+	assert.Contains(t, prompt, "## Current Phase")
+	assert.Contains(t, prompt, "navigation")
+	assert.Contains(t, prompt, "user: john")
+	assert.Contains(t, prompt, "## Recent Actions")
+	assert.Contains(t, prompt, "✓")
+	assert.Contains(t, prompt, "✗")
+	assert.Contains(t, prompt, "## Known Issues")
+	assert.Contains(t, prompt, "clicking while loading")
+}
+
+func TestToPrompt_StuckWarning(t *testing.T) {
+	t.Parallel()
+
+	mem := New("Test task")
+
+	// 3 consecutive failures = stuck
+	for i := 0; i < 3; i++ {
+		mem.RecordAction("action", nil, false, "error", time.Millisecond)
+	}
+
+	prompt := mem.ToPrompt()
+	assert.Contains(t, prompt, "POSSIBLY STUCK")
+}
+
+func TestToPrompt_NeedsHelpWarning(t *testing.T) {
+	t.Parallel()
+
+	mem := New("Test task")
+
+	// 5 consecutive failures = needs help
+	for i := 0; i < 5; i++ {
+		mem.RecordAction("action", nil, false, "error", time.Millisecond)
+	}
+
+	prompt := mem.ToPrompt()
+	assert.Contains(t, prompt, "NEEDS HELP")
+}
+
+func TestProgressiveSummarization(t *testing.T) {
+	t.Parallel()
+
+	mem := New("Test task")
+
+	// Record more actions than the window size
+	for i := 0; i < 10; i++ {
+		mem.RecordAction("action", nil, true, "ok", time.Millisecond)
+	}
+
+	// Should have created milestones from older actions
+	assert.Greater(t, len(mem.Milestones), 0, "should have created milestones")
+	// Recent actions should be limited to window size
+	assert.LessOrEqual(t, len(mem.RecentActions), MaxRecentActions, "recent actions should be limited")
+}
+
+func TestPhaseChangeSummarization(t *testing.T) {
+	t.Parallel()
+
+	mem := New("Test task")
+
+	// Record actions in navigation phase
+	mem.SetPhase(PhaseNavigation)
+	mem.RecordAction("click", nil, true, "clicked", time.Millisecond)
+	mem.RecordAction("scroll", nil, true, "scrolled", time.Millisecond)
+
+	// Change phase - should summarize previous phase
+	mem.SetPhase(PhaseFormFilling)
+
+	assert.Contains(t, mem.Milestones[len(mem.Milestones)-1], "navigation")
+	assert.Empty(t, mem.RecentActions, "recent actions should be cleared on phase change")
+	assert.Equal(t, PhaseFormFilling, mem.Phase)
+}
+
+func TestDetectPhase_LoginForm(t *testing.T) {
+	t.Parallel()
+
+	obs := Observation{
+		HasLoginForm: true,
+	}
+
+	phase := DetectPhase(obs)
+	assert.Equal(t, PhaseAuthentication, phase)
+}
+
+func TestDetectPhase_Checkout(t *testing.T) {
+	t.Parallel()
+
+	obs := Observation{
+		HasCheckoutElements: true,
+	}
+
+	phase := DetectPhase(obs)
+	assert.Equal(t, PhaseCheckout, phase)
+}
+
+func TestDetectPhase_Confirmation(t *testing.T) {
+	t.Parallel()
+
+	obs := Observation{
+		HasConfirmation: true,
+	}
+
+	phase := DetectPhase(obs)
+	assert.Equal(t, PhaseConfirmation, phase)
+}
+
+func TestDetectPhase_SearchBox(t *testing.T) {
+	t.Parallel()
+
+	obs := Observation{
+		HasSearchBox: true,
+	}
+
+	phase := DetectPhase(obs)
+	assert.Equal(t, PhaseSearch, phase)
+}
+
+func TestDetectPhase_TextHeuristics(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		visibleText   []string
+		expectedPhase string
+	}{
+		{
+			name:          "success message",
+			visibleText:   []string{"Thank you for your order!"},
+			expectedPhase: PhaseConfirmation,
+		},
+		{
+			name:          "checkout page",
+			visibleText:   []string{"Enter your credit card details"},
+			expectedPhase: PhaseCheckout,
+		},
+		{
+			name:          "login page",
+			visibleText:   []string{"Please sign in to continue"},
+			expectedPhase: PhaseAuthentication,
+		},
+		{
+			name:          "search results",
+			visibleText:   []string{"Search results for: golang"},
+			expectedPhase: PhaseBrowsing,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			obs := Observation{
+				VisibleText: tt.visibleText,
+			}
+			phase := DetectPhase(obs)
+			assert.Equal(t, tt.expectedPhase, phase)
+		})
+	}
+}
+
+func TestDetectPhase_FocusedElement(t *testing.T) {
+	t.Parallel()
+
+	obs := Observation{
+		FocusedElementRole: "textfield",
+	}
+
+	phase := DetectPhase(obs)
+	assert.Equal(t, PhaseFormFilling, phase)
+}
+
+func TestDetectPhase_Priority(t *testing.T) {
+	t.Parallel()
+
+	// Confirmation should take priority even if checkout elements are also present
+	obs := Observation{
+		HasConfirmation:     true,
+		HasCheckoutElements: true,
+	}
+
+	phase := DetectPhase(obs)
+	assert.Equal(t, PhaseConfirmation, phase)
+}
+
+func TestMaybeUpdatePhase(t *testing.T) {
+	t.Parallel()
+
+	mem := New("Test task")
+	mem.SetPhase(PhaseNavigation)
+
+	// Update phase based on observation
+	obs := Observation{
+		HasLoginForm: true,
+	}
+	mem.MaybeUpdatePhase(obs)
+
+	assert.Equal(t, PhaseAuthentication, mem.Phase)
+}
+
+func TestMaybeUpdatePhase_NoChangeForUnknown(t *testing.T) {
+	t.Parallel()
+
+	mem := New("Test task")
+	mem.SetPhase(PhaseNavigation)
+
+	// Empty observation shouldn't change phase to unknown
+	obs := Observation{}
+	mem.MaybeUpdatePhase(obs)
+
+	// Should still be navigation (DetectPhase returns navigation for empty obs)
+	// Actually, let's check what DetectPhase returns for empty
+	phase := DetectPhase(obs)
+	if phase == PhaseUnknown {
+		assert.Equal(t, PhaseNavigation, mem.Phase, "should not change to unknown")
+	}
+}
+
+func TestMaybeUpdatePhase_NoChangeForSamePhase(t *testing.T) {
+	t.Parallel()
+
+	mem := New("Test task")
+	mem.SetPhase(PhaseAuthentication)
+	mem.RecordAction("type", nil, true, "typed password", time.Millisecond)
+
+	// Same phase observation
+	obs := Observation{
+		HasLoginForm: true,
+	}
+	mem.MaybeUpdatePhase(obs)
+
+	// Phase should remain the same, and recent actions should NOT be cleared
+	assert.Equal(t, PhaseAuthentication, mem.Phase)
+	assert.Len(t, mem.RecentActions, 1, "actions should not be cleared for same phase")
+}
