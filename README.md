@@ -142,6 +142,46 @@ CUA includes multiple safety mechanisms:
 3. **Human Takeover**: Press `Cmd+Shift+Esc` (macOS) or `Ctrl+Shift+Esc` (Windows)
 4. **Audit Logging**: All actions logged
 
+## Examples
+
+The `examples/` directory contains runnable examples:
+
+- **[examples/simple/](examples/simple/)** - Basic 5-line quick start
+- **[examples/progress/](examples/progress/)** - Real-time progress monitoring with callbacks
+- **[examples/low_level/](examples/low_level/)** - Direct element/input control without AI
+
+Run any example:
+
+```bash
+go run ./examples/simple
+go run ./examples/progress
+go run ./examples/low_level
+```
+
+## Benchmarks
+
+Run performance benchmarks:
+
+```bash
+# All benchmarks
+go test -bench=. -benchmem ./...
+
+# Screen capture (target: <100ms)
+go test -bench=BenchmarkCapture -benchmem ./pkg/screen/...
+
+# TaskMemory operations
+go test -bench=. -benchmem ./internal/memory/...
+```
+
+## Troubleshooting
+
+Having issues? Check the [Troubleshooting Guide](docs/TROUBLESHOOTING.md) for common problems and solutions:
+
+- Permission issues on macOS/Windows
+- API key configuration
+- Agent execution problems
+- Performance optimization
+
 ## License
 
 MIT
