@@ -26,19 +26,17 @@ type Model string
 const (
 	// Gemini2Flash is the fast, cost-effective model for most tasks.
 	// Recommended for perception and action agents.
-	Gemini2Flash Model = "gemini-2.0-flash"
+	Gemini2Flash Model = "gemini-2.5-flash"
 
-	// Gemini25Pro is the advanced model for complex reasoning tasks.
+	// Gemini2Pro is the advanced model for complex reasoning tasks.
 	// Recommended for coordinator agent.
-	Gemini25Pro Model = "gemini-2.5-pro-preview-05-06"
+	Gemini2Pro Model = "gemini-2.5-pro"
 
 	// Gemini3Flash is an alias for backward compatibility.
-	// Deprecated: Use Gemini2Flash instead.
-	Gemini3Flash Model = Gemini2Flash
+	Gemini3Flash Model = "gemini-3-pro-preview"
 
 	// Gemini3Pro is an alias for backward compatibility.
-	// Deprecated: Use Gemini25Pro instead.
-	Gemini3Pro Model = Gemini25Pro
+	Gemini3Pro Model = "gemini-3-flash-preview"
 )
 
 // SafetyLevel controls how cautious the agent is.

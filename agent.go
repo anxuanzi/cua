@@ -81,10 +81,10 @@ func (a *Agent) doInitADK(ctx context.Context) error {
 	// The user's model config is used for sub-agents (Flash by default)
 	// Coordinator always uses Pro for reasoning
 	subAgentModelName := string(a.config.model)
-	coordinatorModelName := string(Gemini25Pro)
+	coordinatorModelName := string(Gemini2Pro)
 
 	// If user specified Pro, use it for both
-	if a.config.model == Gemini25Pro || a.config.model == Gemini3Pro {
+	if a.config.model == Gemini2Pro || a.config.model == Gemini3Pro {
 		coordinatorModelName = string(a.config.model)
 	}
 
