@@ -63,7 +63,7 @@ func WithAPIKey(key string) Option {
 }
 
 // WithModel sets the Gemini model to use.
-// Default: Gemini3Flash
+// Default: Gemini2Flash
 //
 // Use Gemini3Pro for complex tasks requiring advanced reasoning.
 // Use Gemini3Flash for faster, cost-effective execution.
