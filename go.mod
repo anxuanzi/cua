@@ -3,7 +3,7 @@ module github.com/anxuanzi/cua
 go 1.25.5
 
 require (
-	github.com/google/uuid v1.6.0
+	github.com/go-vgo/robotgo v1.0.0
 	github.com/kbinani/screenshot v0.0.0-20250624051815-089614a94018
 	github.com/stretchr/testify v1.11.1
 	google.golang.org/adk v0.3.1-0.20260102172107-70d35b78fde2
@@ -22,12 +22,12 @@ require (
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
-	github.com/go-vgo/robotgo v1.0.0 // indirect
 	github.com/godbus/dbus/v5 v5.2.0 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/jsonschema-go v0.3.0 // indirect
 	github.com/google/s2a-go v0.1.9 // indirect
 	github.com/google/safehtml v0.1.0 // indirect
+	github.com/google/uuid v1.6.0 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.6 // indirect
 	github.com/googleapis/gax-go/v2 v2.15.0 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect

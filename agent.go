@@ -8,9 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
-
 	internalagent "github.com/anxuanzi/cua/internal/agent"
+	"github.com/anxuanzi/cua/internal/memory"
 	adkagent "google.golang.org/adk/agent"
 	"google.golang.org/adk/runner"
 	"google.golang.org/adk/session"
@@ -198,7 +197,30 @@ func (a *Agent) DoContext(ctx context.Context, task string) (*Result, error) {
 func (a *Agent) runTask(ctx context.Context, task string, progressCallback ProgressFunc) (*Result, error) {
 	// Generate unique IDs for this session
 	userID := "cua-user"
-	sessionID := uuid.New().String()
+
+	// Create TaskMemory for context engineering
+	taskMem := memory.New(task)
+
+	// Create initial session state with task context
+	// The coordinator uses {task_context?} templating to inject this
+	initialState := map[string]any{
+		"task_context": taskMem.ToPrompt(),
+	}
+
+	// Create a new session before running - ADK requires sessions to be created first
+	createResp, err := a.sessionSvc.Create(ctx, &session.CreateRequest{
+		AppName: "cua",
+		UserID:  userID,
+		State:   initialState,
+	})
+	if err != nil {
+		return &Result{
+			Success: false,
+			Summary: "Failed to create session",
+			Error:   err,
+		}, fmt.Errorf("failed to create session: %w", err)
+	}
+	sessionID := createResp.Session.ID()
 
 	// Create the user message
 	userMessage := genai.NewContentFromText(task, genai.RoleUser)
@@ -209,6 +231,7 @@ func (a *Agent) runTask(ctx context.Context, task string, progressCallback Progr
 	var lastError error
 	stepNum := 0
 	actionCount := 0
+	lastActionTime := time.Now()
 
 	// Run the agent and iterate over events
 	runCfg := adkagent.RunConfig{}
@@ -225,10 +248,27 @@ func (a *Agent) runTask(ctx context.Context, task string, progressCallback Progr
 			break
 		}
 
-		// Process the event
+		// Process the event and update TaskMemory
 		step := a.processEvent(event, &stepNum)
 		if step != nil {
 			steps = append(steps, *step)
+
+			// Record action in TaskMemory
+			actionDuration := time.Since(lastActionTime)
+			taskMem.RecordAction(
+				step.Action,
+				nil, // args are in step.Target but not structured
+				step.Success,
+				step.Description,
+				actionDuration,
+			)
+			lastActionTime = time.Now()
+
+			// Check if agent is stuck and needs help
+			if taskMem.NeedsHelp() {
+				lastError = fmt.Errorf("agent needs help: %d consecutive failures", taskMem.Summary().ConsecutiveFails)
+				break
+			}
 
 			// Call progress callback if provided
 			if progressCallback != nil {
@@ -242,24 +282,30 @@ func (a *Agent) runTask(ctx context.Context, task string, progressCallback Progr
 		}
 	}
 
-	// Determine success
-	success := lastError == nil && len(steps) > 0
+	// Determine success based on TaskMemory state
+	summary := taskMem.Summary()
+	success := lastError == nil && len(steps) > 0 && !summary.IsStuck
 
-	// Build summary
-	summary := lastResponse
-	if summary == "" {
+	// Build summary from TaskMemory or fallback to lastResponse
+	resultSummary := lastResponse
+	if resultSummary == "" {
 		if success {
-			summary = fmt.Sprintf("Task completed in %d steps", len(steps))
+			if len(summary.Milestones) > 0 {
+				resultSummary = fmt.Sprintf("Task completed in %d steps. Milestones: %s",
+					summary.TotalSteps, strings.Join(summary.Milestones, ", "))
+			} else {
+				resultSummary = fmt.Sprintf("Task completed in %d steps", summary.TotalSteps)
+			}
 		} else if lastError != nil {
-			summary = fmt.Sprintf("Task failed: %v", lastError)
+			resultSummary = fmt.Sprintf("Task failed: %v", lastError)
 		} else {
-			summary = "Task completed with no response"
+			resultSummary = "Task completed with no response"
 		}
 	}
 
 	return &Result{
 		Success: success,
-		Summary: summary,
+		Summary: resultSummary,
 		Steps:   steps,
 		Error:   lastError,
 	}, lastError
