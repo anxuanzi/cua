@@ -10,6 +10,7 @@ import (
 
 	internalagent "github.com/anxuanzi/cua/internal/agent"
 	"github.com/anxuanzi/cua/internal/memory"
+	"github.com/anxuanzi/cua/internal/safety"
 	adkagent "google.golang.org/adk/agent"
 	"google.golang.org/adk/runner"
 	"google.golang.org/adk/session"
@@ -32,6 +33,9 @@ type Agent struct {
 	coordinator adkagent.Agent
 	adkRunner   *runner.Runner
 	sessionSvc  session.Service
+
+	// Safety guardrails
+	guardrails *safety.Guardrails
 }
 
 // newAgent creates a new Agent with the given configuration.
@@ -53,8 +57,31 @@ func newAgent(opts ...Option) (*Agent, error) {
 		}
 	}
 
+	// Map SafetyLevel to internal safety.Level
+	var safetyLvl safety.Level
+	switch cfg.safetyLevel {
+	case SafetyMinimal:
+		safetyLvl = safety.LevelMinimal
+	case SafetyStrict:
+		safetyLvl = safety.LevelStrict
+	default:
+		safetyLvl = safety.LevelNormal
+	}
+
+	// Create guardrails with config-based settings
+	guardrailsCfg := safety.GuardrailsConfig{
+		Level:                  safetyLvl,
+		MaxActionsPerMinute:    cfg.rateLimitPerMinute,
+		MaxConsecutiveFailures: 5,
+	}
+	guardrails, err := safety.NewGuardrails(guardrailsCfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create guardrails: %w", err)
+	}
+
 	return &Agent{
-		config: cfg,
+		config:     cfg,
+		guardrails: guardrails,
 	}, nil
 }
 
@@ -251,6 +278,28 @@ func (a *Agent) runTask(ctx context.Context, task string, progressCallback Progr
 		// Process the event and update TaskMemory
 		step := a.processEvent(event, &stepNum)
 		if step != nil {
+			// Validate action with guardrails before counting it
+			if err := a.guardrails.ValidateAction(step.Action, step.Target, step.Description); err != nil {
+				step.Success = false
+				step.Error = err
+				a.guardrails.RecordFailure(step.Action, step.Target, err)
+
+				// Check for takeover or critical errors
+				if err == safety.ErrTakeoverRequested {
+					lastError = err
+					steps = append(steps, *step)
+					break
+				}
+				if err == safety.ErrConsecutiveFailures {
+					lastError = err
+					steps = append(steps, *step)
+					break
+				}
+			} else {
+				// Record success with guardrails
+				a.guardrails.RecordSuccess(step.Action, step.Target, step.Description)
+			}
+
 			steps = append(steps, *step)
 
 			// Record action in TaskMemory

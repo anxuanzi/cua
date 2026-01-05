@@ -133,3 +133,116 @@ func TestIntegration_ProgressCallback(t *testing.T) {
 
 	t.Logf("Completed with %d steps", len(steps))
 }
+
+func TestIntegration_MultiStepTask(t *testing.T) {
+	apiKey := os.Getenv("GOOGLE_API_KEY")
+	if apiKey == "" {
+		t.Skip("GOOGLE_API_KEY not set, skipping integration test")
+	}
+
+	agent := cua.New(
+		cua.WithAPIKey(apiKey),
+		cua.WithModel(cua.Gemini2Flash),
+		cua.WithTimeout(60*time.Second),
+		cua.WithMaxActions(30),
+		cua.WithHeadless(true),
+	)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	// Test a multi-step task: take screenshot, analyze, and describe elements
+	result, err := agent.DoContext(ctx, "Take a screenshot, identify the main application window visible, and describe what type of application it is.")
+	if err != nil {
+		t.Logf("Task error: %v", err)
+		return
+	}
+
+	t.Logf("Result: Success=%v, Steps=%d", result.Success, len(result.Steps))
+	t.Logf("Summary: %s", result.Summary)
+
+	// Should have multiple steps (perception → analysis → response)
+	if len(result.Steps) > 0 {
+		for _, step := range result.Steps {
+			t.Logf("  Step %d: %s (%s)", step.Number, step.Action, step.Description)
+		}
+	}
+}
+
+func TestIntegration_SafetyGuardrails(t *testing.T) {
+	apiKey := os.Getenv("GOOGLE_API_KEY")
+	if apiKey == "" {
+		t.Skip("GOOGLE_API_KEY not set, skipping integration test")
+	}
+
+	// Test with strict rate limiting
+	agent := cua.New(
+		cua.WithAPIKey(apiKey),
+		cua.WithModel(cua.Gemini2Flash),
+		cua.WithTimeout(30*time.Second),
+		cua.WithMaxActions(5), // Low limit to test
+		cua.WithHeadless(true),
+		cua.WithRateLimit(10), // Very low rate limit
+	)
+
+	require.NotNil(t, agent)
+	assert.False(t, agent.IsRunning())
+
+	// The agent should respect the rate limit
+	// We're just testing that it initializes properly with safety settings
+}
+
+func TestIntegration_AgentTransfer(t *testing.T) {
+	apiKey := os.Getenv("GOOGLE_API_KEY")
+	if apiKey == "" {
+		t.Skip("GOOGLE_API_KEY not set, skipping integration test")
+	}
+
+	agent := cua.New(
+		cua.WithAPIKey(apiKey),
+		cua.WithModel(cua.Gemini2Flash),
+		cua.WithTimeout(90*time.Second),
+		cua.WithMaxActions(50),
+		cua.WithHeadless(true),
+	)
+
+	var transfersSeen []string
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+
+	err := agent.DoWithProgressContext(ctx, "Look at the screen and tell me what the focused window is.", func(step cua.Step) {
+		t.Logf("Step %d: %s - %s (target: %s)", step.Number, step.Action, step.Description, step.Target)
+		if step.Action == "transfer" {
+			transfersSeen = append(transfersSeen, step.Target)
+		}
+	})
+
+	if err != nil {
+		t.Logf("Task error: %v", err)
+		// Don't fail - just check what we got
+	}
+
+	t.Logf("Transfers observed: %v", transfersSeen)
+	// We expect to see transfers to perception_agent at minimum
+}
+
+func TestIntegration_EnvLoading(t *testing.T) {
+	// Test that env loading works (godotenv integration)
+	// This test verifies that GOOGLE_API_KEY can be loaded from .env
+	originalKey := os.Getenv("GOOGLE_API_KEY")
+
+	if originalKey == "" {
+		t.Skip("GOOGLE_API_KEY not set, skipping env loading test")
+	}
+
+	// Verify the agent can be created (which means env loading worked)
+	agent := cua.New(
+		// Don't pass API key explicitly - should load from env
+		cua.WithModel(cua.Gemini2Flash),
+		cua.WithTimeout(10*time.Second),
+		cua.WithHeadless(true),
+	)
+
+	require.NotNil(t, agent)
+	t.Log("Agent created successfully with env-loaded API key")
+}

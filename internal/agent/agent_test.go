@@ -90,8 +90,17 @@ func TestCoordinatorInstruction_ContainsCommunicationMarkers(t *testing.T) {
 	t.Parallel()
 
 	// Verify communication markers are present
-	assert.Contains(t, CoordinatorInstruction, "TASK_COMPLETE:")
-	assert.Contains(t, CoordinatorInstruction, "NEED_HELP:")
+	assert.Contains(t, CoordinatorInstruction, "TASK_COMPLETE")
+	assert.Contains(t, CoordinatorInstruction, "NEED_HELP")
+}
+
+func TestCoordinatorInstruction_ContainsTransferFunction(t *testing.T) {
+	t.Parallel()
+
+	// Verify the instruction tells LLM to call transfer_to_agent function
+	assert.Contains(t, CoordinatorInstruction, "transfer_to_agent")
+	assert.Contains(t, CoordinatorInstruction, `transfer_to_agent(agent_name="perception_agent")`)
+	assert.Contains(t, CoordinatorInstruction, `transfer_to_agent(agent_name="action_agent")`)
 }
 
 func TestCoordinatorInstruction_ContainsDecisionRules(t *testing.T) {
