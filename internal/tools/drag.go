@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/anxuanzi/cua/pkg/input"
+	"github.com/anxuanzi/cua/pkg/logging"
 	"github.com/anxuanzi/cua/pkg/screen"
 	"google.golang.org/adk/tool"
 	"google.golang.org/adk/tool/functiontool"
@@ -12,17 +13,17 @@ import (
 
 // DragArgs defines the arguments for the drag tool.
 type DragArgs struct {
-	// StartX is the starting X coordinate (in physical pixels from screenshot).
-	StartX int `json:"start_x" jsonschema:"Starting X coordinate in physical pixels (from screenshot)"`
+	// StartX is the starting X coordinate (from screenshot image).
+	StartX int `json:"start_x" jsonschema:"Starting X coordinate (from screenshot image)"`
 
-	// StartY is the starting Y coordinate (in physical pixels from screenshot).
-	StartY int `json:"start_y" jsonschema:"Starting Y coordinate in physical pixels (from screenshot)"`
+	// StartY is the starting Y coordinate (from screenshot image).
+	StartY int `json:"start_y" jsonschema:"Starting Y coordinate (from screenshot image)"`
 
-	// EndX is the ending X coordinate (in physical pixels from screenshot).
-	EndX int `json:"end_x" jsonschema:"Ending X coordinate in physical pixels (from screenshot)"`
+	// EndX is the ending X coordinate (from screenshot image).
+	EndX int `json:"end_x" jsonschema:"Ending X coordinate (from screenshot image)"`
 
-	// EndY is the ending Y coordinate (in physical pixels from screenshot).
-	EndY int `json:"end_y" jsonschema:"Ending Y coordinate in physical pixels (from screenshot)"`
+	// EndY is the ending Y coordinate (from screenshot image).
+	EndY int `json:"end_y" jsonschema:"Ending Y coordinate (from screenshot image)"`
 }
 
 // DragResult contains the result of a drag operation.
@@ -70,6 +71,7 @@ func validateDragArgs(args DragArgs) error {
 func performDrag(ctx tool.Context, args DragArgs) (DragResult, error) {
 	// Validate arguments
 	if err := validateDragArgs(args); err != nil {
+		logging.Error("[drag] Validation failed: %v", err)
 		return DragResult{
 			Success: false,
 			StartX:  args.StartX,
@@ -80,9 +82,24 @@ func performDrag(ctx tool.Context, args DragArgs) (DragResult, error) {
 		}, nil
 	}
 
-	// Perform the drag operation
-	err := dragNative(args.StartX, args.StartY, args.EndX, args.EndY)
+	// Get the effective scale from the last screenshot
+	effectiveScale := screen.EffectiveScale()
+
+	// Convert image coordinates to logical screen coordinates
+	logicalStartX := int(float64(args.StartX) * effectiveScale)
+	logicalStartY := int(float64(args.StartY) * effectiveScale)
+	logicalEndX := int(float64(args.EndX) * effectiveScale)
+	logicalEndY := int(float64(args.EndY) * effectiveScale)
+
+	logging.Info("[drag] from image(%d, %d) → logical(%d, %d) to image(%d, %d) → logical(%d, %d) [effective_scale=%.4f]",
+		args.StartX, args.StartY, logicalStartX, logicalStartY,
+		args.EndX, args.EndY, logicalEndX, logicalEndY, effectiveScale)
+
+	start := input.Point{X: logicalStartX, Y: logicalStartY}
+	end := input.Point{X: logicalEndX, Y: logicalEndY}
+	err := input.Drag(start, end)
 	if err != nil {
+		logging.Error("[drag] Failed: %v", err)
 		return DragResult{
 			Success: false,
 			StartX:  args.StartX,
@@ -93,6 +110,8 @@ func performDrag(ctx tool.Context, args DragArgs) (DragResult, error) {
 		}, nil
 	}
 
+	logging.Info("[drag] Success from logical(%d, %d) to logical(%d, %d)",
+		logicalStartX, logicalStartY, logicalEndX, logicalEndY)
 	return DragResult{
 		Success: true,
 		StartX:  args.StartX,
@@ -100,17 +119,6 @@ func performDrag(ctx tool.Context, args DragArgs) (DragResult, error) {
 		EndX:    args.EndX,
 		EndY:    args.EndY,
 	}, nil
-}
-
-// dragNative performs a drag operation using the input package.
-func dragNative(startX, startY, endX, endY int) error {
-	// Convert physical pixels (from screenshot) to logical coordinates (for mouse)
-	logicalStartX, logicalStartY := screen.PhysicalToLogical(startX, startY)
-	logicalEndX, logicalEndY := screen.PhysicalToLogical(endX, endY)
-
-	start := input.Point{X: logicalStartX, Y: logicalStartY}
-	end := input.Point{X: logicalEndX, Y: logicalEndY}
-	return input.Drag(start, end)
 }
 
 // NewDragTool creates the drag tool for ADK agents.

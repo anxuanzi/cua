@@ -222,30 +222,59 @@ func SavePNG(w io.Writer, img image.Image) error {
 	return png.Encode(w, img)
 }
 
+// cachedScaleFactor stores the display scale factor to avoid recalculating.
+var cachedScaleFactor float64
+
+// lastEffectiveScale stores the effective scale from the last screenshot.
+// This includes both display scaling and any image resizing.
+var lastEffectiveScale float64 = 1.0
+
 // ScaleFactor returns the display scale factor for the primary display.
 // On Retina displays this is typically 2.0, on standard displays it's 1.0.
 // This is calculated by comparing the logical display bounds with the
-// actual captured image resolution.
+// actual captured image resolution. The result is cached for performance.
 func ScaleFactor() float64 {
+	if cachedScaleFactor > 0 {
+		return cachedScaleFactor
+	}
+
 	// Get logical bounds from display
-	_, _, logicalW, logicalH := robotgo.GetDisplayBounds(0)
-	if logicalW == 0 || logicalH == 0 {
+	_, _, logicalW, _ := robotgo.GetDisplayBounds(0)
+	if logicalW == 0 {
+		cachedScaleFactor = 1.0
 		return 1.0
 	}
 
 	// Capture a small region to determine physical pixel ratio
 	img, err := robotgo.CaptureImg(0, 0, 10, 10)
 	if err != nil {
+		cachedScaleFactor = 1.0
 		return 1.0
 	}
 
 	physicalW := img.Bounds().Dx()
 	if physicalW == 0 {
+		cachedScaleFactor = 1.0
 		return 1.0
 	}
 
 	// Scale is physical/logical
-	return float64(physicalW) / 10.0
+	cachedScaleFactor = float64(physicalW) / 10.0
+	return cachedScaleFactor
+}
+
+// SetEffectiveScale sets the effective scale factor that includes both
+// display scaling and screenshot resizing. This should be called by the
+// screenshot tool after capturing and resizing an image.
+func SetEffectiveScale(scale float64) {
+	lastEffectiveScale = scale
+}
+
+// EffectiveScale returns the effective scale factor from the last screenshot.
+// This is used by click tool to convert coordinates from the resized image
+// back to logical screen coordinates.
+func EffectiveScale() float64 {
+	return lastEffectiveScale
 }
 
 // PhysicalToLogical converts physical pixel coordinates (from screenshot)

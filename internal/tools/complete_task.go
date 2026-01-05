@@ -6,8 +6,6 @@ import (
 	"google.golang.org/adk/tool/functiontool"
 )
 
-var completeTaskLog = logging.NewToolLogger("complete_task")
-
 // CompleteTaskArgs defines the arguments for the complete_task tool.
 type CompleteTaskArgs struct {
 	// Summary is a brief description of what was accomplished.
@@ -25,12 +23,12 @@ type CompleteTaskResult struct {
 
 // performCompleteTask handles task completion and signals the loop to exit.
 func performCompleteTask(ctx tool.Context, args CompleteTaskArgs) (CompleteTaskResult, error) {
-	completeTaskLog.Start("complete_task", args.Summary)
+	logging.Info("[complete_task] Task completed: %s", args.Summary)
 
 	// Signal the LoopAgent to exit
 	ctx.Actions().Escalate = true
 
-	completeTaskLog.Success("complete_task", "Task completed successfully")
+	logging.Info("[complete_task] Escalate flag set - loop will exit")
 	return CompleteTaskResult{
 		Success: true,
 		Summary: args.Summary,

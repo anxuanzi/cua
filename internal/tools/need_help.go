@@ -6,8 +6,6 @@ import (
 	"google.golang.org/adk/tool/functiontool"
 )
 
-var needHelpLog = logging.NewToolLogger("need_help")
-
 // NeedHelpArgs defines the arguments for the need_help tool.
 type NeedHelpArgs struct {
 	// Reason explains why help is needed.
@@ -31,12 +29,15 @@ type NeedHelpResult struct {
 
 // performNeedHelp handles help requests and signals the loop to exit.
 func performNeedHelp(ctx tool.Context, args NeedHelpArgs) (NeedHelpResult, error) {
-	needHelpLog.Start("need_help", args.Reason)
+	logging.Info("[need_help] Requesting human assistance: %s", args.Reason)
+	if args.AttemptsMade != "" {
+		logging.Info("[need_help] Attempts made: %s", args.AttemptsMade)
+	}
 
 	// Signal the LoopAgent to exit - human intervention needed
 	ctx.Actions().Escalate = true
 
-	needHelpLog.Info("need_help", "Human assistance requested: "+args.Reason)
+	logging.Info("[need_help] Escalate flag set - loop will exit")
 	return NeedHelpResult{
 		HelpRequested: true,
 		Reason:        args.Reason,

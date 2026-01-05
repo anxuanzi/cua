@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/anxuanzi/cua/pkg/input"
+	"github.com/anxuanzi/cua/pkg/logging"
 	"github.com/anxuanzi/cua/pkg/screen"
 	"google.golang.org/adk/tool"
 	"google.golang.org/adk/tool/functiontool"
@@ -11,11 +12,11 @@ import (
 
 // ScrollArgs defines the arguments for the scroll tool.
 type ScrollArgs struct {
-	// X is the X coordinate where scrolling occurs (in physical pixels from screenshot).
-	X int `json:"x" jsonschema:"X coordinate in physical pixels (from screenshot) where scroll occurs"`
+	// X is the X coordinate where scrolling occurs (from screenshot image).
+	X int `json:"x" jsonschema:"X coordinate (from screenshot image) where scroll occurs"`
 
-	// Y is the Y coordinate where scrolling occurs (in physical pixels from screenshot).
-	Y int `json:"y" jsonschema:"Y coordinate in physical pixels (from screenshot) where scroll occurs"`
+	// Y is the Y coordinate where scrolling occurs (from screenshot image).
+	Y int `json:"y" jsonschema:"Y coordinate (from screenshot image) where scroll occurs"`
 
 	// DeltaX is horizontal scroll amount. Positive = right, negative = left.
 	DeltaX int `json:"delta_x,omitzero" jsonschema:"Horizontal scroll amount (positive = right, negative = left)"`
@@ -48,6 +49,7 @@ type ScrollResult struct {
 // performScroll handles the scroll tool invocation.
 func performScroll(ctx tool.Context, args ScrollArgs) (ScrollResult, error) {
 	if args.DeltaX == 0 && args.DeltaY == 0 {
+		logging.Error("[scroll] At least one of delta_x or delta_y must be non-zero")
 		return ScrollResult{
 			Success: false,
 			X:       args.X,
@@ -56,8 +58,19 @@ func performScroll(ctx tool.Context, args ScrollArgs) (ScrollResult, error) {
 		}, nil
 	}
 
-	err := scrollNative(args.X, args.Y, args.DeltaX, args.DeltaY)
+	// Get the effective scale from the last screenshot
+	effectiveScale := screen.EffectiveScale()
+
+	// Convert image coordinates to logical screen coordinates
+	logicalX := int(float64(args.X) * effectiveScale)
+	logicalY := int(float64(args.Y) * effectiveScale)
+
+	logging.Info("[scroll] at image(%d, %d) → logical(%d, %d), delta=(%d, %d) [effective_scale=%.4f]",
+		args.X, args.Y, logicalX, logicalY, args.DeltaX, args.DeltaY, effectiveScale)
+
+	err := input.ScrollAt(input.Point{X: logicalX, Y: logicalY}, args.DeltaX, args.DeltaY)
 	if err != nil {
+		logging.Error("[scroll] Failed: %v", err)
 		return ScrollResult{
 			Success: false,
 			X:       args.X,
@@ -68,6 +81,7 @@ func performScroll(ctx tool.Context, args ScrollArgs) (ScrollResult, error) {
 		}, nil
 	}
 
+	logging.Info("[scroll] Success at logical(%d, %d)", logicalX, logicalY)
 	return ScrollResult{
 		Success: true,
 		X:       args.X,
@@ -75,13 +89,6 @@ func performScroll(ctx tool.Context, args ScrollArgs) (ScrollResult, error) {
 		DeltaX:  args.DeltaX,
 		DeltaY:  args.DeltaY,
 	}, nil
-}
-
-// scrollNative performs a scroll operation using robotgo.
-func scrollNative(x, y, deltaX, deltaY int) error {
-	// Convert physical pixels (from screenshot) to logical coordinates (for mouse)
-	logicalX, logicalY := screen.PhysicalToLogical(x, y)
-	return input.ScrollAt(input.Point{X: logicalX, Y: logicalY}, deltaX, deltaY)
 }
 
 // NewScrollTool creates the scroll tool for ADK agents.

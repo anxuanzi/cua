@@ -3,6 +3,7 @@ package tools
 import (
 	"time"
 
+	"github.com/anxuanzi/cua/pkg/logging"
 	"google.golang.org/adk/tool"
 	"google.golang.org/adk/tool/functiontool"
 )
@@ -27,8 +28,11 @@ type WaitResult struct {
 
 // performWait handles the wait tool invocation.
 func performWait(ctx tool.Context, args WaitArgs) (WaitResult, error) {
+	logging.Info("[wait] Waiting %dms", args.Duration)
+
 	// Validate duration
 	if args.Duration < 1 {
+		logging.Error("[wait] Duration must be at least 1 millisecond")
 		return WaitResult{
 			Success: false,
 			Error:   "duration must be at least 1 millisecond",
@@ -36,6 +40,7 @@ func performWait(ctx tool.Context, args WaitArgs) (WaitResult, error) {
 	}
 
 	if args.Duration > 30000 {
+		logging.Error("[wait] Duration cannot exceed 30000 milliseconds")
 		return WaitResult{
 			Success: false,
 			Error:   "duration cannot exceed 30000 milliseconds (30 seconds)",
@@ -47,6 +52,7 @@ func performWait(ctx tool.Context, args WaitArgs) (WaitResult, error) {
 	time.Sleep(time.Duration(args.Duration) * time.Millisecond)
 	elapsed := time.Since(start)
 
+	logging.Info("[wait] Completed after %dms", elapsed.Milliseconds())
 	return WaitResult{
 		Success:  true,
 		WaitedMs: int(elapsed.Milliseconds()),

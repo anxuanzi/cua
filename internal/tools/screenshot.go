@@ -12,12 +12,25 @@ import (
 	"encoding/base64"
 	"fmt"
 	"image"
-	"image/png"
+	"image/jpeg"
 
 	"github.com/anxuanzi/cua/pkg/logging"
 	"github.com/anxuanzi/cua/pkg/screen"
+	"golang.org/x/image/draw"
 	"google.golang.org/adk/tool"
 	"google.golang.org/adk/tool/functiontool"
+)
+
+// Screenshot configuration - can be adjusted for token optimization
+var (
+	// MaxScreenshotDimension is the maximum width or height for screenshots.
+	// Images larger than this will be resized to fit while maintaining aspect ratio.
+	// Lower values = fewer tokens but less detail. Default 1280 is good balance.
+	MaxScreenshotDimension = 1280
+
+	// ScreenshotQuality is the JPEG quality (1-100). Lower = smaller file but more artifacts.
+	// 60 is a good balance for AI vision models.
+	ScreenshotQuality = 60
 )
 
 var screenshotLog = logging.NewToolLogger("screenshot")
@@ -69,9 +82,13 @@ func takeScreenshot(ctx tool.Context, args ScreenshotArgs) (ScreenshotResult, er
 	var img *image.RGBA
 	var err error
 
+	// Get scale factor first (cached)
+	scaleFactor := screen.ScaleFactor()
+
 	// Capture based on arguments
 	if args.Region != nil {
-		screenshotLog.Start("capture_region", args.Region.X, args.Region.Y, args.Region.Width, args.Region.Height)
+		logging.Info("[screenshot] Capturing region: x=%d, y=%d, w=%d, h=%d (scale=%.2f)",
+			args.Region.X, args.Region.Y, args.Region.Width, args.Region.Height, scaleFactor)
 		img, err = screen.CaptureRect(screen.Rect{
 			X:      args.Region.X,
 			Y:      args.Region.Y,
@@ -79,43 +96,96 @@ func takeScreenshot(ctx tool.Context, args ScreenshotArgs) (ScreenshotResult, er
 			Height: args.Region.Height,
 		})
 	} else {
-		screenshotLog.Start("capture_display", args.DisplayIndex)
+		logging.Info("[screenshot] Capturing display %d (scale=%.2f)", args.DisplayIndex, scaleFactor)
 		img, err = screen.CaptureDisplay(args.DisplayIndex)
 	}
 
 	if err != nil {
-		screenshotLog.Failure("screenshot", err)
+		logging.Error("[screenshot] Capture failed: %v", err)
 		return ScreenshotResult{
 			Success: false,
 			Error:   fmt.Sprintf("failed to capture screen: %v", err),
 		}, nil
 	}
 
-	bounds := img.Bounds()
-	screenshotLog.Debug("captured image: %dx%d", bounds.Dx(), bounds.Dy())
+	originalBounds := img.Bounds()
+	originalW, originalH := originalBounds.Dx(), originalBounds.Dy()
+	logging.Info("[screenshot] Captured %dx%d physical pixels", originalW, originalH)
 
-	// Encode to PNG
+	// Resize if needed to reduce token usage
+	resizedImg := resizeImage(img, MaxScreenshotDimension)
+	resizedBounds := resizedImg.Bounds()
+	resizedW, resizedH := resizedBounds.Dx(), resizedBounds.Dy()
+
+	if resizedW != originalW || resizedH != originalH {
+		logging.Info("[screenshot] Resized to %dx%d (max dimension: %d)", resizedW, resizedH, MaxScreenshotDimension)
+	}
+
+	// Encode to JPEG (much smaller than PNG)
 	var buf bytes.Buffer
-	if err := png.Encode(&buf, img); err != nil {
-		screenshotLog.Failure("png_encode", err)
+	if err := jpeg.Encode(&buf, resizedImg, &jpeg.Options{Quality: ScreenshotQuality}); err != nil {
+		logging.Error("[screenshot] JPEG encode failed: %v", err)
 		return ScreenshotResult{
 			Success: false,
-			Error:   fmt.Sprintf("failed to encode PNG: %v", err),
+			Error:   fmt.Sprintf("failed to encode JPEG: %v", err),
 		}, nil
 	}
 
 	// Convert to base64
 	base64Img := base64.StdEncoding.EncodeToString(buf.Bytes())
 
-	scaleFactor := screen.ScaleFactor()
-	screenshotLog.Success("screenshot", fmt.Sprintf("%dx%d (%d bytes, scale=%.2f)", bounds.Dx(), bounds.Dy(), buf.Len(), scaleFactor))
+	// Calculate the effective scale for coordinate mapping
+	// The model sees resizedW x resizedH image
+	// To convert image coords to logical screen coords:
+	//   1. Scale up to original physical: multiply by (originalW / resizedW)
+	//   2. Convert physical to logical: divide by scaleFactor
+	// Combined: image_coords * (originalW / resizedW) / scaleFactor
+	//
+	// We store the multiplier so click can do: logical = image_coords * effectiveScale
+	// effectiveScale = (originalW / resizedW) / scaleFactor
+	effectiveScale := (float64(originalW) / float64(resizedW)) / scaleFactor
+
+	// Store the effective scale for the click tool to use
+	screen.SetEffectiveScale(effectiveScale)
+
+	logging.Info("[screenshot] Success: %dx%d → %dx%d, %d bytes (%.1f KB), effective_scale=%.4f (display_scale=%.2f)",
+		originalW, originalH, resizedW, resizedH, buf.Len(), float64(buf.Len())/1024, effectiveScale, scaleFactor)
+
 	return ScreenshotResult{
 		Success:     true,
 		ImageBase64: base64Img,
-		Width:       bounds.Dx(),
-		Height:      bounds.Dy(),
-		ScaleFactor: scaleFactor,
+		Width:       resizedW,
+		Height:      resizedH,
+		ScaleFactor: effectiveScale, // This is the multiplier to convert image coords to logical coords
 	}, nil
+}
+
+// resizeImage resizes an image so its largest dimension is at most maxDim.
+// Returns the original image if no resizing is needed.
+func resizeImage(img *image.RGBA, maxDim int) *image.RGBA {
+	bounds := img.Bounds()
+	w, h := bounds.Dx(), bounds.Dy()
+
+	// No resize needed
+	if w <= maxDim && h <= maxDim {
+		return img
+	}
+
+	// Calculate new dimensions maintaining aspect ratio
+	var newW, newH int
+	if w > h {
+		newW = maxDim
+		newH = int(float64(h) * float64(maxDim) / float64(w))
+	} else {
+		newH = maxDim
+		newW = int(float64(w) * float64(maxDim) / float64(h))
+	}
+
+	// Create resized image
+	resized := image.NewRGBA(image.Rect(0, 0, newW, newH))
+	draw.CatmullRom.Scale(resized, resized.Bounds(), img, bounds, draw.Over, nil)
+
+	return resized
 }
 
 // NewScreenshotTool creates the screenshot tool for ADK agents.

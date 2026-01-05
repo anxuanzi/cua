@@ -10,8 +10,6 @@ import (
 	"google.golang.org/adk/tool/functiontool"
 )
 
-var clickLog = logging.NewToolLogger("click")
-
 // ClickArgs defines the arguments for the click tool.
 type ClickArgs struct {
 	// X is the X coordinate to click (in physical pixels from screenshot).
@@ -52,9 +50,17 @@ func performClick(ctx tool.Context, args ClickArgs) (ClickResult, error) {
 		clickType = "left"
 	}
 
-	// Convert physical pixels (from screenshot) to logical coordinates (for mouse)
-	logicalX, logicalY := screen.PhysicalToLogical(args.X, args.Y)
-	clickLog.Start("click", clickType, args.X, args.Y, "→", logicalX, logicalY)
+	// Get the effective scale from the last screenshot
+	// This includes both display scaling and any image resizing
+	effectiveScale := screen.EffectiveScale()
+
+	// Convert image coordinates to logical screen coordinates
+	// logical = image_coords * effectiveScale
+	logicalX := int(float64(args.X) * effectiveScale)
+	logicalY := int(float64(args.Y) * effectiveScale)
+
+	logging.Info("[click] %s at image(%d, %d) → logical(%d, %d) [effective_scale=%.4f]",
+		clickType, args.X, args.Y, logicalX, logicalY, effectiveScale)
 
 	point := input.Point{X: logicalX, Y: logicalY}
 	var err error
@@ -67,7 +73,7 @@ func performClick(ctx tool.Context, args ClickArgs) (ClickResult, error) {
 	case "double":
 		err = input.DoubleClick(point)
 	default:
-		clickLog.Failure("click", fmt.Errorf("invalid click type: %s", clickType))
+		logging.Error("[click] Invalid click type: %s", clickType)
 		return ClickResult{
 			Success:   false,
 			X:         args.X,
@@ -78,7 +84,7 @@ func performClick(ctx tool.Context, args ClickArgs) (ClickResult, error) {
 	}
 
 	if err != nil {
-		clickLog.Failure("click", err)
+		logging.Error("[click] Failed: %v", err)
 		return ClickResult{
 			Success:   false,
 			X:         args.X,
@@ -88,7 +94,7 @@ func performClick(ctx tool.Context, args ClickArgs) (ClickResult, error) {
 		}, nil
 	}
 
-	clickLog.Success("click", fmt.Sprintf("(%d, %d) %s", args.X, args.Y, clickType))
+	logging.Info("[click] Success: %s at logical(%d, %d)", clickType, logicalX, logicalY)
 	return ClickResult{
 		Success:   true,
 		X:         args.X,

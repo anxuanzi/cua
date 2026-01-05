@@ -8,8 +8,6 @@ import (
 	"google.golang.org/adk/tool/functiontool"
 )
 
-var typeTextLog = logging.NewToolLogger("type_text")
-
 // TypeTextArgs defines the arguments for the type_text tool.
 type TypeTextArgs struct {
 	// Text is the text to type.
@@ -30,25 +28,26 @@ type TypeTextResult struct {
 
 // typeText handles the type_text tool invocation.
 func typeText(ctx tool.Context, args TypeTextArgs) (TypeTextResult, error) {
+	// Truncate text for logging if too long
+	logText := args.Text
+	if len(logText) > 100 {
+		logText = logText[:97] + "..."
+	}
+
+	logging.Info("[type_text] Typing: %q (%d chars)", logText, len(args.Text))
+
 	if args.Text == "" {
-		typeTextLog.Failure("type_text", fmt.Errorf("text cannot be empty"))
+		logging.Error("[type_text] Text cannot be empty")
 		return TypeTextResult{
 			Success: false,
 			Error:   "text cannot be empty",
 		}, nil
 	}
 
-	// Truncate text for logging if too long
-	logText := args.Text
-	if len(logText) > 50 {
-		logText = logText[:47] + "..."
-	}
-	typeTextLog.Start("type_text", logText)
-
 	// Use robotgo keyboard input
 	err := typeTextNative(args.Text)
 	if err != nil {
-		typeTextLog.Failure("type_text", err)
+		logging.Error("[type_text] Failed: %v", err)
 		return TypeTextResult{
 			Success: false,
 			Text:    args.Text,
@@ -56,7 +55,7 @@ func typeText(ctx tool.Context, args TypeTextArgs) (TypeTextResult, error) {
 		}, nil
 	}
 
-	typeTextLog.Success("type_text", logText)
+	logging.Info("[type_text] Success: typed %d characters", len(args.Text))
 	return TypeTextResult{
 		Success: true,
 		Text:    args.Text,

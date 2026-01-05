@@ -125,12 +125,14 @@ func (r *Runner) Run(ctx context.Context, task string, cfg RunConfig) (*Result, 
 	taskMessage := genai.NewContentFromText(task, genai.RoleUser)
 	runCfg := adkagent.RunConfig{}
 
-	logging.Info("Starting task: %s", task)
+	logging.Info("========================================")
+	logging.Info("STARTING TASK: %s", task)
+	logging.Info("========================================")
 
 	for event, err := range r.adkRunner.Run(ctx, userID, sessionID, taskMessage, runCfg) {
 		if err != nil {
 			// Log and record the error
-			logging.Error("Runner error: %v", err)
+			logging.Error("[runner] Error: %v", err)
 
 			// Unknown tool errors are non-fatal - model tried to call a tool we don't have
 			if strings.Contains(err.Error(), "unknown tool") {
@@ -260,6 +262,19 @@ func processEvent(event *session.Event, stepNum *int) *Step {
 
 	// Skip events without actions
 	if functionCall == nil && event.Actions.TransferToAgent == "" {
+		// Log text content from model if present
+		if event.Content != nil {
+			for _, part := range event.Content.Parts {
+				if part.Text != "" {
+					// Truncate for logging
+					text := part.Text
+					if len(text) > 200 {
+						text = text[:197] + "..."
+					}
+					logging.Debug("[model] %s", text)
+				}
+			}
+		}
 		return nil
 	}
 
@@ -274,7 +289,22 @@ func processEvent(event *session.Event, stepNum *int) *Step {
 		step.Action = functionCall.Name
 		step.Description = fmt.Sprintf("Executed %s", functionCall.Name)
 
+		// Log the full tool call with arguments
+		argsStr := ""
 		if args := functionCall.Args; args != nil {
+			for k, v := range args {
+				if argsStr != "" {
+					argsStr += ", "
+				}
+				// Truncate long values
+				valStr := fmt.Sprintf("%v", v)
+				if len(valStr) > 50 {
+					valStr = valStr[:47] + "..."
+				}
+				argsStr += fmt.Sprintf("%s=%v", k, valStr)
+			}
+
+			// Extract target for step
 			if x, hasX := args["x"]; hasX {
 				if y, hasY := args["y"]; hasY {
 					step.Target = fmt.Sprintf("(%v, %v)", x, y)
@@ -284,12 +314,17 @@ func processEvent(event *session.Event, stepNum *int) *Step {
 				step.Target = fmt.Sprintf("%v", text)
 			}
 		}
+
+		logging.Info("========================================")
+		logging.Info("[step %d] TOOL CALL: %s(%s)", *stepNum, functionCall.Name, argsStr)
+		logging.Info("========================================")
 	}
 
 	if event.Actions.TransferToAgent != "" {
 		step.Action = "transfer"
 		step.Description = fmt.Sprintf("Transferred to %s", event.Actions.TransferToAgent)
 		step.Target = event.Actions.TransferToAgent
+		logging.Info("[step %d] TRANSFER TO: %s", *stepNum, event.Actions.TransferToAgent)
 	}
 
 	return step
