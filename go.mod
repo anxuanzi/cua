@@ -6,6 +6,7 @@ require (
 	github.com/go-vgo/robotgo v1.0.0
 	github.com/joho/godotenv v1.5.1
 	github.com/stretchr/testify v1.11.1
+	golang.org/x/image v0.33.0
 	google.golang.org/adk v0.3.1-0.20260102172107-70d35b78fde2
 	google.golang.org/genai v1.40.0
 )
@@ -56,7 +57,6 @@ require (
 	go.opentelemetry.io/otel/trace v1.38.0 // indirect
 	golang.org/x/crypto v0.45.0 // indirect
 	golang.org/x/exp v0.0.0-20251125195548-87e1e737ad39 // indirect
-	golang.org/x/image v0.33.0 // indirect
 	golang.org/x/net v0.47.0 // indirect
 	golang.org/x/sys v0.38.0 // indirect
 	golang.org/x/text v0.31.0 // indirect
