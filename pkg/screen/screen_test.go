@@ -516,3 +516,120 @@ func TestDenormalizeCoordEdgeCases(t *testing.T) {
 		})
 	}
 }
+
+func TestImageToScreenCoord(t *testing.T) {
+	// Set up test dimensions
+	SetLogicalScreenSize(1512, 982)
+	SetImageSize(1280, 831)
+
+	tests := []struct {
+		name         string
+		imgX, imgY   int
+		wantX, wantY int
+	}{
+		{
+			name: "center of image",
+			imgX: 640, imgY: 415,
+			wantX: 756, wantY: 490,
+		},
+		{
+			name: "top-left",
+			imgX: 0, imgY: 0,
+			wantX: 0, wantY: 0,
+		},
+		{
+			name: "bottom-right",
+			imgX: 1280, imgY: 831,
+			wantX: 1511, wantY: 981, // clamped to max
+		},
+		{
+			name: "arbitrary point",
+			imgX: 320, imgY: 207,
+			wantX: 378, wantY: 245,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			x, y := ImageToScreenCoord(tc.imgX, tc.imgY)
+			// Allow ±1 pixel tolerance due to rounding
+			if abs(x-tc.wantX) > 1 || abs(y-tc.wantY) > 1 {
+				t.Errorf("ImageToScreenCoord(%d, %d) = (%d, %d), want (%d, %d)",
+					tc.imgX, tc.imgY, x, y, tc.wantX, tc.wantY)
+			}
+			t.Logf("ImageToScreenCoord(%d, %d) = (%d, %d)", tc.imgX, tc.imgY, x, y)
+		})
+	}
+}
+
+func TestConvertModelCoord(t *testing.T) {
+	// Set up test dimensions
+	SetLogicalScreenSize(1512, 982)
+	SetImageSize(1280, 831)
+
+	// For regular Gemini Pro/Flash (not Google's CUA model), all coordinates are
+	// always treated as image pixel coordinates. The model outputs coordinates
+	// relative to the screenshot image it sees.
+	tests := []struct {
+		name           string
+		inputX, inputY int
+		wantMode       string
+		wantInRange    bool // just check it's in valid screen range
+	}{
+		{
+			name:   "small coords (still image_pixel)",
+			inputX: 500, inputY: 500,
+			wantMode:    "image_pixel", // Always image_pixel for regular Gemini
+			wantInRange: true,
+		},
+		{
+			name:   "larger X coord",
+			inputX: 1200, inputY: 500,
+			wantMode:    "image_pixel",
+			wantInRange: true,
+		},
+		{
+			name:   "larger Y coord",
+			inputX: 500, inputY: 800,
+			wantMode:    "image_pixel",
+			wantInRange: true,
+		},
+		{
+			name:   "center of image",
+			inputX: 640, inputY: 415,
+			wantMode:    "image_pixel",
+			wantInRange: true,
+		},
+		{
+			name:   "corner of image",
+			inputX: 1280, inputY: 831,
+			wantMode:    "image_pixel",
+			wantInRange: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			x, y, mode := ConvertModelCoord(tc.inputX, tc.inputY)
+			if mode != tc.wantMode {
+				t.Errorf("ConvertModelCoord(%d, %d) mode = %q, want %q",
+					tc.inputX, tc.inputY, mode, tc.wantMode)
+			}
+			if tc.wantInRange {
+				screenW, screenH := LogicalScreenSize()
+				if x < 0 || x >= screenW || y < 0 || y >= screenH {
+					t.Errorf("ConvertModelCoord(%d, %d) = (%d, %d) out of screen range [0,%d) x [0,%d)",
+						tc.inputX, tc.inputY, x, y, screenW, screenH)
+				}
+			}
+			t.Logf("ConvertModelCoord(%d, %d) = (%d, %d), mode=%s", tc.inputX, tc.inputY, x, y, mode)
+		})
+	}
+}
+
+func abs(x int) int {
+	if x < 0 {
+		return -x
+	}
+	return x
+}

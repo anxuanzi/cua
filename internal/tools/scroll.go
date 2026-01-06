@@ -12,11 +12,13 @@ import (
 
 // ScrollArgs defines the arguments for the scroll tool.
 type ScrollArgs struct {
-	// X is the X coordinate where scrolling occurs (normalized 0-1000 from Gemini).
-	X int `json:"x" jsonschema:"X coordinate (normalized 0-1000 from model output) where scroll occurs"`
+	// X is the X coordinate where scrolling occurs (in image pixels).
+	// Use the pixel position from the screenshot image.
+	X int `json:"x" jsonschema:"X coordinate in image pixels (from the screenshot)"`
 
-	// Y is the Y coordinate where scrolling occurs (normalized 0-1000 from Gemini).
-	Y int `json:"y" jsonschema:"Y coordinate (normalized 0-1000 from model output) where scroll occurs"`
+	// Y is the Y coordinate where scrolling occurs (in image pixels).
+	// Use the pixel position from the screenshot image.
+	Y int `json:"y" jsonschema:"Y coordinate in image pixels (from the screenshot)"`
 
 	// DeltaX is horizontal scroll amount. Positive = right, negative = left.
 	DeltaX int `json:"delta_x,omitzero" jsonschema:"Horizontal scroll amount (positive = right, negative = left)"`
@@ -58,14 +60,15 @@ func performScroll(ctx tool.Context, args ScrollArgs) (ScrollResult, error) {
 		}, nil
 	}
 
-	// Denormalize Gemini's 0-1000 coordinates to logical screen coordinates
-	logicalX, logicalY := screen.DenormalizeCoord(args.X, args.Y)
+	// Convert image pixel coordinates to logical screen coordinates
+	logicalX, logicalY, coordMode := screen.ConvertModelCoord(args.X, args.Y)
 
-	// Get screen size for logging
+	// Get screen and image sizes for logging
 	screenW, screenH := screen.LogicalScreenSize()
+	imgW, imgH := screen.ImageSize()
 
-	logging.Info("[scroll] at normalized(%d, %d) → logical(%d, %d), delta=(%d, %d) [screen=%dx%d]",
-		args.X, args.Y, logicalX, logicalY, args.DeltaX, args.DeltaY, screenW, screenH)
+	logging.Info("[scroll] at input(%d, %d) → logical(%d, %d), delta=(%d, %d) [mode=%s, screen=%dx%d, image=%dx%d]",
+		args.X, args.Y, logicalX, logicalY, args.DeltaX, args.DeltaY, coordMode, screenW, screenH, imgW, imgH)
 
 	err := input.ScrollAt(input.Point{X: logicalX, Y: logicalY}, args.DeltaX, args.DeltaY)
 	if err != nil {
@@ -95,7 +98,7 @@ func NewScrollTool() (tool.Tool, error) {
 	return functiontool.New(
 		functiontool.Config{
 			Name:        "scroll",
-			Description: "Scrolls the mouse wheel at the specified screen coordinates. Positive delta_y scrolls down, negative scrolls up. Positive delta_x scrolls right, negative scrolls left.",
+			Description: "Scrolls the mouse wheel at the specified coordinates. Use image pixel coordinates from the screenshot. Positive delta_y scrolls down, negative scrolls up. Positive delta_x scrolls right, negative scrolls left.",
 		},
 		performScroll,
 	)

@@ -233,6 +233,13 @@ var logicalScreenSize struct {
 	height int
 }
 
+// imageSize stores the dimensions of the resized image sent to Gemini.
+// This is needed if Gemini outputs pixel coordinates relative to the image it sees.
+var imageSize struct {
+	width  int
+	height int
+}
+
 // ScaleFactor returns the display scale factor for the primary display.
 // On Retina displays this is typically 2.0, on standard displays it's 1.0.
 // This is calculated by comparing the logical display bounds with the
@@ -280,6 +287,18 @@ func LogicalScreenSize() (width, height int) {
 	return logicalScreenSize.width, logicalScreenSize.height
 }
 
+// SetImageSize stores the dimensions of the resized image sent to the AI model.
+// This should be called by the screenshot tool after resizing.
+func SetImageSize(width, height int) {
+	imageSize.width = width
+	imageSize.height = height
+}
+
+// ImageSize returns the dimensions of the resized image sent to the AI model.
+func ImageSize() (width, height int) {
+	return imageSize.width, imageSize.height
+}
+
 // DenormalizeCoord converts Gemini's normalized 0-1000 coordinates to logical screen coordinates.
 // Gemini outputs coordinates in a normalized 0-999 grid regardless of actual screen size.
 // This function converts them to actual logical pixel coordinates for mouse input.
@@ -319,6 +338,57 @@ func clamp(val, min, max int) int {
 		return max
 	}
 	return val
+}
+
+// ConvertModelCoord converts model output coordinates to screen coordinates.
+// For regular Gemini Pro/Flash (not Google's specialized CUA model), the model outputs
+// coordinates in IMAGE PIXEL space - the pixel position in the screenshot it sees.
+//
+// This function converts those image pixel coordinates to logical screen coordinates
+// that robotgo uses for mouse input.
+//
+// The third return value is always "image_pixel" for logging purposes.
+func ConvertModelCoord(modelX, modelY int) (screenX, screenY int, mode string) {
+	// Always use image pixel coordinate conversion for regular Gemini models.
+	// Google's specialized CUA model uses 0-1000 normalized coords, but we're
+	// using standard Gemini Pro/Flash which outputs image pixel coordinates.
+	screenX, screenY = ImageToScreenCoord(modelX, modelY)
+	return screenX, screenY, "image_pixel"
+}
+
+// ImageToScreenCoord converts image pixel coordinates to logical screen coordinates.
+// Use this if the AI model outputs coordinates relative to the screenshot image it sees,
+// rather than normalized 0-1000 coordinates.
+//
+// Example: If screen is 1512x982, image is 1280x831, and model outputs (640, 415):
+//
+//	x = 640 * (1512 / 1280) = 756
+//	y = 415 * (1512 / 1280) = 490
+func ImageToScreenCoord(imgX, imgY int) (screenX, screenY int) {
+	imgW, imgH := imageSize.width, imageSize.height
+	scrW, scrH := logicalScreenSize.width, logicalScreenSize.height
+
+	// Fallbacks if not set
+	if imgW == 0 || imgH == 0 {
+		imgW, imgH = 1280, 720 // Default max dimension
+	}
+	if scrW == 0 || scrH == 0 {
+		if disp, err := PrimaryDisplay(); err == nil {
+			scrW = disp.Bounds.Width
+			scrH = disp.Bounds.Height
+		} else {
+			scrW, scrH = 1920, 1080
+		}
+	}
+
+	// Scale from image coords to screen coords
+	scaleX := float64(scrW) / float64(imgW)
+	scaleY := float64(scrH) / float64(imgH)
+
+	screenX = clamp(int(float64(imgX)*scaleX+0.5), 0, scrW-1)
+	screenY = clamp(int(float64(imgY)*scaleY+0.5), 0, scrH-1)
+
+	return screenX, screenY
 }
 
 // PhysicalToLogical converts physical pixel coordinates (from screenshot)

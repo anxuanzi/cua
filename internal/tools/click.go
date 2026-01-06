@@ -12,15 +12,13 @@ import (
 
 // ClickArgs defines the arguments for the click tool.
 type ClickArgs struct {
-	// X is the X coordinate to click (normalized 0-1000 from Gemini).
-	// Gemini outputs coordinates in a normalized 0-999 grid regardless of screen size.
-	// Automatically denormalized to logical screen coordinates for mouse input.
-	X int `json:"x" jsonschema:"X coordinate (normalized 0-1000 from model output)"`
+	// X is the X coordinate to click (in image pixels).
+	// Use the pixel position from the screenshot image (0 = left edge, image_width = right edge).
+	X int `json:"x" jsonschema:"X coordinate in image pixels (from the screenshot)"`
 
-	// Y is the Y coordinate to click (normalized 0-1000 from Gemini).
-	// Gemini outputs coordinates in a normalized 0-999 grid regardless of screen size.
-	// Automatically denormalized to logical screen coordinates for mouse input.
-	Y int `json:"y" jsonschema:"Y coordinate (normalized 0-1000 from model output)"`
+	// Y is the Y coordinate to click (in image pixels).
+	// Use the pixel position from the screenshot image (0 = top edge, image_height = bottom edge).
+	Y int `json:"y" jsonschema:"Y coordinate in image pixels (from the screenshot)"`
 
 	// ClickType specifies the type of click: "left", "right", or "double".
 	// Defaults to "left" if not specified.
@@ -52,16 +50,16 @@ func performClick(ctx tool.Context, args ClickArgs) (ClickResult, error) {
 		clickType = "left"
 	}
 
-	// Denormalize Gemini's 0-1000 coordinates to logical screen coordinates
-	// Gemini outputs coords in normalized 0-999 grid regardless of screen/image size
-	// Formula: actual = normalized / 1000 * screen_dimension
-	logicalX, logicalY := screen.DenormalizeCoord(args.X, args.Y)
+	// Convert image pixel coordinates to logical screen coordinates.
+	// Gemini Pro/Flash outputs coordinates relative to the screenshot image.
+	logicalX, logicalY, coordMode := screen.ConvertModelCoord(args.X, args.Y)
 
-	// Get screen size for logging
+	// Get screen and image sizes for logging
 	screenW, screenH := screen.LogicalScreenSize()
+	imgW, imgH := screen.ImageSize()
 
-	logging.Info("[click] %s at normalized(%d, %d) → logical(%d, %d) [screen=%dx%d]",
-		clickType, args.X, args.Y, logicalX, logicalY, screenW, screenH)
+	logging.Info("[click] %s at input(%d, %d) → logical(%d, %d) [mode=%s, screen=%dx%d, image=%dx%d]",
+		clickType, args.X, args.Y, logicalX, logicalY, coordMode, screenW, screenH, imgW, imgH)
 
 	point := input.Point{X: logicalX, Y: logicalY}
 	var err error
@@ -109,7 +107,7 @@ func NewClickTool() (tool.Tool, error) {
 	return functiontool.New(
 		functiontool.Config{
 			Name:        "click",
-			Description: "Performs a mouse click at the specified screen coordinates. Supports left click, right click, and double click.",
+			Description: "Performs a mouse click at the specified coordinates. Use image pixel coordinates from the screenshot (x=0 is left edge, y=0 is top edge). Supports left click, right click, and double click.",
 		},
 		performClick,
 	)

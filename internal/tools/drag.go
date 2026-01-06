@@ -13,17 +13,21 @@ import (
 
 // DragArgs defines the arguments for the drag tool.
 type DragArgs struct {
-	// StartX is the starting X coordinate (normalized 0-1000 from Gemini).
-	StartX int `json:"start_x" jsonschema:"Starting X coordinate (normalized 0-1000 from model output)"`
+	// StartX is the starting X coordinate (in image pixels).
+	// Use the pixel position from the screenshot image.
+	StartX int `json:"start_x" jsonschema:"Starting X coordinate in image pixels (from the screenshot)"`
 
-	// StartY is the starting Y coordinate (normalized 0-1000 from Gemini).
-	StartY int `json:"start_y" jsonschema:"Starting Y coordinate (normalized 0-1000 from model output)"`
+	// StartY is the starting Y coordinate (in image pixels).
+	// Use the pixel position from the screenshot image.
+	StartY int `json:"start_y" jsonschema:"Starting Y coordinate in image pixels (from the screenshot)"`
 
-	// EndX is the ending X coordinate (normalized 0-1000 from Gemini).
-	EndX int `json:"end_x" jsonschema:"Ending X coordinate (normalized 0-1000 from model output)"`
+	// EndX is the ending X coordinate (in image pixels).
+	// Use the pixel position from the screenshot image.
+	EndX int `json:"end_x" jsonschema:"Ending X coordinate in image pixels (from the screenshot)"`
 
-	// EndY is the ending Y coordinate (normalized 0-1000 from Gemini).
-	EndY int `json:"end_y" jsonschema:"Ending Y coordinate (normalized 0-1000 from model output)"`
+	// EndY is the ending Y coordinate (in image pixels).
+	// Use the pixel position from the screenshot image.
+	EndY int `json:"end_y" jsonschema:"Ending Y coordinate in image pixels (from the screenshot)"`
 }
 
 // DragResult contains the result of a drag operation.
@@ -82,16 +86,17 @@ func performDrag(ctx tool.Context, args DragArgs) (DragResult, error) {
 		}, nil
 	}
 
-	// Denormalize Gemini's 0-1000 coordinates to logical screen coordinates
-	logicalStartX, logicalStartY := screen.DenormalizeCoord(args.StartX, args.StartY)
-	logicalEndX, logicalEndY := screen.DenormalizeCoord(args.EndX, args.EndY)
+	// Convert image pixel coordinates to logical screen coordinates
+	logicalStartX, logicalStartY, startMode := screen.ConvertModelCoord(args.StartX, args.StartY)
+	logicalEndX, logicalEndY, endMode := screen.ConvertModelCoord(args.EndX, args.EndY)
 
-	// Get screen size for logging
+	// Get screen and image sizes for logging
 	screenW, screenH := screen.LogicalScreenSize()
+	imgW, imgH := screen.ImageSize()
 
-	logging.Info("[drag] from normalized(%d, %d) → logical(%d, %d) to normalized(%d, %d) → logical(%d, %d) [screen=%dx%d]",
-		args.StartX, args.StartY, logicalStartX, logicalStartY,
-		args.EndX, args.EndY, logicalEndX, logicalEndY, screenW, screenH)
+	logging.Info("[drag] from input(%d, %d) → logical(%d, %d) [%s] to input(%d, %d) → logical(%d, %d) [%s] [screen=%dx%d, image=%dx%d]",
+		args.StartX, args.StartY, logicalStartX, logicalStartY, startMode,
+		args.EndX, args.EndY, logicalEndX, logicalEndY, endMode, screenW, screenH, imgW, imgH)
 
 	start := input.Point{X: logicalStartX, Y: logicalStartY}
 	end := input.Point{X: logicalEndX, Y: logicalEndY}
@@ -124,7 +129,7 @@ func NewDragTool() (tool.Tool, error) {
 	return functiontool.New(
 		functiontool.Config{
 			Name:        "drag",
-			Description: "Performs a mouse drag operation from start coordinates to end coordinates. Useful for moving elements, resizing windows, selecting text, or slider adjustments.",
+			Description: "Performs a mouse drag operation from start coordinates to end coordinates. Use image pixel coordinates from the screenshot. Useful for moving elements, resizing windows, selecting text, or slider adjustments.",
 		},
 		performDrag,
 	)

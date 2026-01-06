@@ -58,19 +58,23 @@ type ScreenshotResult struct {
 	// Success indicates if the capture succeeded.
 	Success bool `json:"success"`
 
-	// ImageBase64 is the PNG image encoded as base64.
+	// ImageBase64 is the JPEG image encoded as base64.
 	// This can be sent to vision models for analysis.
 	ImageBase64 string `json:"image_base64,omitempty"`
 
-	// Width is the image width in physical pixels.
+	// Width is the image width in pixels.
+	// USE THIS VALUE for X coordinates: valid range is 0 to Width-1.
 	Width int `json:"width,omitempty"`
 
-	// Height is the image height in physical pixels.
+	// Height is the image height in pixels.
+	// USE THIS VALUE for Y coordinates: valid range is 0 to Height-1.
 	Height int `json:"height,omitempty"`
 
+	// CoordinateInfo provides guidance on how to use coordinates.
+	CoordinateInfo string `json:"coordinate_info,omitempty"`
+
 	// ScaleFactor is the display scale factor (e.g., 2.0 for Retina).
-	// Coordinates from this image are in physical pixels.
-	// The click tool automatically converts these to logical coordinates.
+	// For reference only - coordinates are automatically converted.
 	ScaleFactor float64 `json:"scale_factor,omitempty"`
 
 	// Error contains any error message.
@@ -150,20 +154,28 @@ func takeScreenshot(ctx tool.Context, args ScreenshotArgs) (ScreenshotResult, er
 	// Convert to base64
 	base64Img := base64.StdEncoding.EncodeToString(buf.Bytes())
 
-	// Store the logical screen size for Gemini coordinate denormalization
-	// Gemini outputs coordinates in normalized 0-1000 range regardless of image size
-	// The click tool will use these dimensions to convert: actual = normalized / 1000 * dimension
+	// Store dimensions for coordinate conversion
+	// We store both the logical screen size and the resized image size
+	// This allows supporting both coordinate systems:
+	// 1. Normalized 0-1000 coordinates → DenormalizeCoord()
+	// 2. Image pixel coordinates → ImageToScreenCoord()
 	screen.SetLogicalScreenSize(logicalWidth, logicalHeight)
+	screen.SetImageSize(resizedW, resizedH)
 
-	logging.Info("[screenshot] Success: %dx%d → %dx%d, %d bytes (%.1f KB), logical_screen=%dx%d",
-		originalW, originalH, resizedW, resizedH, buf.Len(), float64(buf.Len())/1024, logicalWidth, logicalHeight)
+	logging.Info("[screenshot] Success: %dx%d → %dx%d, %d bytes (%.1f KB), logical_screen=%dx%d, image_size=%dx%d",
+		originalW, originalH, resizedW, resizedH, buf.Len(), float64(buf.Len())/1024, logicalWidth, logicalHeight, resizedW, resizedH)
+
+	// Create coordinate guidance message
+	coordInfo := fmt.Sprintf("Image dimensions: %dx%d pixels. For click/scroll/drag, use pixel coordinates from this image: x range [0, %d], y range [0, %d].",
+		resizedW, resizedH, resizedW-1, resizedH-1)
 
 	return ScreenshotResult{
-		Success:     true,
-		ImageBase64: base64Img,
-		Width:       resizedW,
-		Height:      resizedH,
-		ScaleFactor: scaleFactor, // Display scale factor (for reference)
+		Success:        true,
+		ImageBase64:    base64Img,
+		Width:          resizedW,
+		Height:         resizedH,
+		CoordinateInfo: coordInfo,
+		ScaleFactor:    scaleFactor, // Display scale factor (for reference)
 	}, nil
 }
 
