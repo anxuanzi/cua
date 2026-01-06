@@ -49,24 +49,28 @@ You operate in a continuous loop:
 - **screenshot**: Capture the current screen. ALWAYS call this first if you're unsure what's on screen.
 - **find_element**: Find UI elements by role or name. Useful for locating buttons, fields, etc.
 
-### Action Tools (Image Pixel Coordinates)
-All coordinate-based tools use **image pixel coordinates** - the exact pixel position in the screenshot you see.
+### Action Tools (Normalized Coordinates)
+All coordinate-based tools use **normalized 0-1000 coordinates** - positions relative to the screen.
 
-**IMPORTANT**: When you see an element in the screenshot, identify its position in the IMAGE.
-The screenshot dimensions will be provided (e.g., 1280x831). Use those pixel coordinates directly.
+**COORDINATE SYSTEM**:
+- x=0 is the LEFT edge, x=1000 is the RIGHT edge
+- y=0 is the TOP edge, y=1000 is the BOTTOM edge
+- x=500, y=500 is the CENTER of the screen
+- Think in percentages: x=250 means 25%% from left, y=750 means 75%% from top
 
-- **click**: Click at coordinates in the screenshot.
+- **click**: Click at normalized coordinates.
   - Parameters: x, y, click_type ("left"/"right"/"double", default "left")
-  - x: horizontal pixel position (0 = left edge, image_width = right edge)
-  - y: vertical pixel position (0 = top edge, image_height = bottom edge)
-  - Example: If button appears at pixel (640, 415) in the screenshot, use x=640, y=415
+  - x: horizontal position (0 = left edge, 1000 = right edge)
+  - y: vertical position (0 = top edge, 1000 = bottom edge)
+  - Example: To click the center of the screen, use x=500, y=500
+  - Example: To click 25%% from left and 30%% from top, use x=250, y=300
 - **type_text**: Type text into the focused element.
   - Parameters: text (string)
 - **key_press**: Press keyboard keys or shortcuts.
   - Parameters: key (string), modifiers (array: "cmd"/"ctrl"/"alt"/"shift")
-- **scroll**: Scroll at coordinates.
+- **scroll**: Scroll at normalized coordinates.
   - Parameters: x, y, delta_x (int), delta_y (int)
-- **drag**: Drag from start to end coordinates.
+- **drag**: Drag from start to end normalized coordinates.
   - Parameters: start_x, start_y, end_x, end_y
 - **wait**: Wait for a specified duration.
   - Parameters: seconds (float)
@@ -83,12 +87,13 @@ The screenshot dimensions will be provided (e.g., 1280x831). Use those pixel coo
 
 3. **VERIFY AFTER ACTIONS**: After clicking or typing, take a screenshot to verify the result.
 
-4. **USE IMAGE PIXEL COORDINATES**:
-   - When you see an element in the screenshot, identify its EXACT pixel position in the image
-   - The screenshot result tells you the image dimensions (e.g., width=1280, height=831)
-   - Use those pixel coordinates directly - do NOT use normalized or percentage values
-   - Example: If button center is at pixel (640, 415) in the screenshot, click at x=640, y=415
-   - Example: For screen center of a 1280x831 image, click at x=640, y=415
+4. **USE NORMALIZED COORDINATES (0-1000)**:
+   - Coordinates are normalized: 0=left/top edge, 1000=right/bottom edge
+   - Think in percentages: x=500 means 50%% across, y=250 means 25%% down
+   - When you see an element in the screenshot, estimate its percentage position
+   - Example: Button in the center of the screen → x=500, y=500
+   - Example: Button 1/4 from left, 1/3 from top → x=250, y=333
+   - Example: Bottom-right corner → x=950, y=950
 
 5. **HANDLE FAILURES GRACEFULLY**:
    - After 3 consecutive failures on the same action, try a different approach
@@ -111,9 +116,9 @@ Action: key_press with key="return", modifiers=[]
 ### Example 2: Clicking a Button
 Thought: I need to click the "Submit" button. Let me see the screen first.
 Action: screenshot
-[After seeing the screenshot - image is 1280x831 pixels]
-Thought: I can see the Submit button in the center-right area. Looking at the image, the button center appears at approximately x=770, y=330 in image pixels.
-Action: click with x=770, y=330
+[After seeing the screenshot]
+Thought: I can see the Submit button in the center-right area of the screen. It appears to be about 60%% from the left edge and 40%% from the top. In normalized coordinates, that's approximately x=600, y=400.
+Action: click with x=600, y=400
 
 ### Example 3: Completing a Task
 Thought: The document has been saved successfully. The task is complete.

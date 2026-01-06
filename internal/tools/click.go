@@ -12,13 +12,13 @@ import (
 
 // ClickArgs defines the arguments for the click tool.
 type ClickArgs struct {
-	// X is the X coordinate to click (in image pixels).
-	// Use the pixel position from the screenshot image (0 = left edge, image_width = right edge).
-	X int `json:"x" jsonschema:"X coordinate in image pixels (from the screenshot)"`
+	// X is the X coordinate to click (normalized 0-1000).
+	// 0 = left edge, 500 = center, 1000 = right edge.
+	X int `json:"x" jsonschema:"X coordinate (0-1000 normalized: 0=left, 500=center, 1000=right)"`
 
-	// Y is the Y coordinate to click (in image pixels).
-	// Use the pixel position from the screenshot image (0 = top edge, image_height = bottom edge).
-	Y int `json:"y" jsonschema:"Y coordinate in image pixels (from the screenshot)"`
+	// Y is the Y coordinate to click (normalized 0-1000).
+	// 0 = top edge, 500 = center, 1000 = bottom edge.
+	Y int `json:"y" jsonschema:"Y coordinate (0-1000 normalized: 0=top, 500=center, 1000=bottom)"`
 
 	// ClickType specifies the type of click: "left", "right", or "double".
 	// Defaults to "left" if not specified.
@@ -107,7 +107,7 @@ func NewClickTool() (tool.Tool, error) {
 	return functiontool.New(
 		functiontool.Config{
 			Name:        "click",
-			Description: "Performs a mouse click at the specified coordinates. Use image pixel coordinates from the screenshot (x=0 is left edge, y=0 is top edge). Supports left click, right click, and double click.",
+			Description: "Performs a mouse click at the specified coordinates. Use normalized 0-1000 coordinates (0=left/top edge, 500=center, 1000=right/bottom edge). Supports left click, right click, and double click.",
 		},
 		performClick,
 	)

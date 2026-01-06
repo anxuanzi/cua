@@ -563,68 +563,196 @@ func TestImageToScreenCoord(t *testing.T) {
 }
 
 func TestConvertModelCoord(t *testing.T) {
-	// Set up test dimensions
-	SetLogicalScreenSize(1512, 982)
-	SetImageSize(1280, 831)
+	// Test auto-detection logic for coordinate system detection
+	// Detection rules:
+	// 1. coords > 1000 → image_pixel (normalized max is ~999)
+	// 2. coords >= image dimensions → normalized (can't be outside image)
+	// 3. image > 1000px and coords < 1000 → normalized
+	// 4. otherwise → image_pixel
 
-	// For regular Gemini Pro/Flash (not Google's CUA model), all coordinates are
-	// always treated as image pixel coordinates. The model outputs coordinates
-	// relative to the screenshot image it sees.
-	tests := []struct {
-		name           string
-		inputX, inputY int
-		wantMode       string
-		wantInRange    bool // just check it's in valid screen range
-	}{
-		{
-			name:   "small coords (still image_pixel)",
-			inputX: 500, inputY: 500,
-			wantMode:    "image_pixel", // Always image_pixel for regular Gemini
-			wantInRange: true,
-		},
-		{
-			name:   "larger X coord",
-			inputX: 1200, inputY: 500,
-			wantMode:    "image_pixel",
-			wantInRange: true,
-		},
-		{
-			name:   "larger Y coord",
-			inputX: 500, inputY: 800,
-			wantMode:    "image_pixel",
-			wantInRange: true,
-		},
-		{
-			name:   "center of image",
-			inputX: 640, inputY: 415,
-			wantMode:    "image_pixel",
-			wantInRange: true,
-		},
-		{
-			name:   "corner of image",
-			inputX: 1280, inputY: 831,
-			wantMode:    "image_pixel",
-			wantInRange: true,
-		},
-	}
+	t.Run("large image with small coords - normalized", func(t *testing.T) {
+		// 1280x831 image is > 1000px, so small coords are treated as normalized
+		SetLogicalScreenSize(1512, 982)
+		SetImageSize(1280, 831)
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			x, y, mode := ConvertModelCoord(tc.inputX, tc.inputY)
-			if mode != tc.wantMode {
-				t.Errorf("ConvertModelCoord(%d, %d) mode = %q, want %q",
-					tc.inputX, tc.inputY, mode, tc.wantMode)
-			}
-			if tc.wantInRange {
-				screenW, screenH := LogicalScreenSize()
-				if x < 0 || x >= screenW || y < 0 || y >= screenH {
-					t.Errorf("ConvertModelCoord(%d, %d) = (%d, %d) out of screen range [0,%d) x [0,%d)",
-						tc.inputX, tc.inputY, x, y, screenW, screenH)
+		tests := []struct {
+			name           string
+			inputX, inputY int
+			wantMode       string
+			wantX, wantY   int
+		}{
+			{
+				name:   "center normalized (500,500)",
+				inputX: 500, inputY: 500,
+				wantMode: "normalized",
+				wantX:    756, wantY: 491, // 500/1000 * 1512, 500/1000 * 982
+			},
+			{
+				name:   "top-left normalized (100,100)",
+				inputX: 100, inputY: 100,
+				wantMode: "normalized",
+				wantX:    151, wantY: 98, // 100/1000 * 1512, 100/1000 * 982
+			},
+			{
+				name:   "bottom-right normalized (900,900)",
+				inputX: 900, inputY: 900,
+				wantMode: "normalized",
+				wantX:    1361, wantY: 884, // 900/1000 * 1512, 900/1000 * 982
+			},
+		}
+
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				x, y, mode := ConvertModelCoord(tc.inputX, tc.inputY)
+				if mode != tc.wantMode {
+					t.Errorf("mode = %q, want %q", mode, tc.wantMode)
 				}
-			}
-			t.Logf("ConvertModelCoord(%d, %d) = (%d, %d), mode=%s", tc.inputX, tc.inputY, x, y, mode)
-		})
-	}
+				if abs(x-tc.wantX) > 1 || abs(y-tc.wantY) > 1 {
+					t.Errorf("ConvertModelCoord(%d, %d) = (%d, %d), want (%d, %d)",
+						tc.inputX, tc.inputY, x, y, tc.wantX, tc.wantY)
+				}
+				t.Logf("ConvertModelCoord(%d, %d) = (%d, %d), mode=%s", tc.inputX, tc.inputY, x, y, mode)
+			})
+		}
+	})
+
+	t.Run("coords exceeding 1000 - image_pixel", func(t *testing.T) {
+		// Coords > 1000 must be image pixels (normalized max is 999)
+		SetLogicalScreenSize(1920, 1080)
+		SetImageSize(1920, 1080)
+
+		tests := []struct {
+			name           string
+			inputX, inputY int
+			wantMode       string
+		}{
+			{
+				name:   "x > 1000",
+				inputX: 1500, inputY: 500,
+				wantMode: "image_pixel",
+			},
+			{
+				name:   "y > 1000",
+				inputX: 500, inputY: 1050,
+				wantMode: "image_pixel",
+			},
+			{
+				name:   "both > 1000",
+				inputX: 1800, inputY: 1000,
+				wantMode: "image_pixel",
+			},
+		}
+
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				_, _, mode := ConvertModelCoord(tc.inputX, tc.inputY)
+				if mode != tc.wantMode {
+					t.Errorf("ConvertModelCoord(%d, %d) mode = %q, want %q",
+						tc.inputX, tc.inputY, mode, tc.wantMode)
+				}
+			})
+		}
+	})
+
+	t.Run("coords exceeding image dimensions - normalized", func(t *testing.T) {
+		// If coords >= image size, they can't be image pixels, must be normalized
+		SetLogicalScreenSize(1512, 982)
+		SetImageSize(800, 600) // Small image
+
+		tests := []struct {
+			name           string
+			inputX, inputY int
+			wantMode       string
+		}{
+			{
+				name:   "x exceeds image width",
+				inputX: 900, inputY: 400,
+				wantMode: "normalized", // 900 >= 800
+			},
+			{
+				name:   "y exceeds image height",
+				inputX: 400, inputY: 700,
+				wantMode: "normalized", // 700 >= 600
+			},
+		}
+
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				_, _, mode := ConvertModelCoord(tc.inputX, tc.inputY)
+				if mode != tc.wantMode {
+					t.Errorf("ConvertModelCoord(%d, %d) mode = %q, want %q",
+						tc.inputX, tc.inputY, mode, tc.wantMode)
+				}
+			})
+		}
+	})
+
+	t.Run("small image with small coords - image_pixel", func(t *testing.T) {
+		// Image <= 1000px in both dimensions, coords are image pixels
+		SetLogicalScreenSize(1024, 768)
+		SetImageSize(800, 600)
+
+		tests := []struct {
+			name           string
+			inputX, inputY int
+			wantMode       string
+		}{
+			{
+				name:   "center of small image",
+				inputX: 400, inputY: 300,
+				wantMode: "image_pixel",
+			},
+			{
+				name:   "corner of small image",
+				inputX: 100, inputY: 100,
+				wantMode: "image_pixel",
+			},
+		}
+
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				_, _, mode := ConvertModelCoord(tc.inputX, tc.inputY)
+				if mode != tc.wantMode {
+					t.Errorf("ConvertModelCoord(%d, %d) mode = %q, want %q",
+						tc.inputX, tc.inputY, mode, tc.wantMode)
+				}
+			})
+		}
+	})
+
+	t.Run("coordinate conversion accuracy", func(t *testing.T) {
+		// Test actual coordinate values for normalized mode
+		SetLogicalScreenSize(1512, 982)
+		SetImageSize(1280, 831)
+
+		// Normalized (500, 500) should map to screen center-ish
+		x, y, mode := ConvertModelCoord(500, 500)
+		if mode != "normalized" {
+			t.Errorf("expected normalized mode, got %s", mode)
+		}
+		// 500/1000 * 1512 = 756, 500/1000 * 982 = 491
+		expectedX, expectedY := 756, 491
+		if abs(x-expectedX) > 1 || abs(y-expectedY) > 1 {
+			t.Errorf("ConvertModelCoord(500, 500) = (%d, %d), want (%d, %d)",
+				x, y, expectedX, expectedY)
+		}
+
+		// Edge case: (0, 0) should map to (0, 0)
+		x, y, _ = ConvertModelCoord(0, 0)
+		if x != 0 || y != 0 {
+			t.Errorf("ConvertModelCoord(0, 0) = (%d, %d), want (0, 0)", x, y)
+		}
+
+		// Edge case: (999, 999) should map near bottom-right
+		x, y, _ = ConvertModelCoord(999, 999)
+		// 999/1000 * 1512 ≈ 1510, 999/1000 * 982 ≈ 981
+		expectedX = 1510
+		expectedY = 981
+		if abs(x-expectedX) > 2 || abs(y-expectedY) > 2 {
+			t.Errorf("ConvertModelCoord(999, 999) = (%d, %d), want (%d, %d)",
+				x, y, expectedX, expectedY)
+		}
+	})
 }
 
 func abs(x int) int {

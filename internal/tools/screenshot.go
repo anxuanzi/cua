@@ -62,12 +62,10 @@ type ScreenshotResult struct {
 	// This can be sent to vision models for analysis.
 	ImageBase64 string `json:"image_base64,omitempty"`
 
-	// Width is the image width in pixels.
-	// USE THIS VALUE for X coordinates: valid range is 0 to Width-1.
+	// Width is the image width in pixels (for reference).
 	Width int `json:"width,omitempty"`
 
-	// Height is the image height in pixels.
-	// USE THIS VALUE for Y coordinates: valid range is 0 to Height-1.
+	// Height is the image height in pixels (for reference).
 	Height int `json:"height,omitempty"`
 
 	// CoordinateInfo provides guidance on how to use coordinates.
@@ -166,8 +164,8 @@ func takeScreenshot(ctx tool.Context, args ScreenshotArgs) (ScreenshotResult, er
 		originalW, originalH, resizedW, resizedH, buf.Len(), float64(buf.Len())/1024, logicalWidth, logicalHeight, resizedW, resizedH)
 
 	// Create coordinate guidance message
-	coordInfo := fmt.Sprintf("Image dimensions: %dx%d pixels. For click/scroll/drag, use pixel coordinates from this image: x range [0, %d], y range [0, %d].",
-		resizedW, resizedH, resizedW-1, resizedH-1)
+	coordInfo := fmt.Sprintf("Use normalized 0-1000 coordinates for click/scroll/drag: x=0 is left edge, x=1000 is right edge, y=0 is top, y=1000 is bottom. Example: screen center = (500, 500). Image size for reference: %dx%d pixels.",
+		resizedW, resizedH)
 
 	return ScreenshotResult{
 		Success:        true,

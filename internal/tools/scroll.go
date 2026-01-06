@@ -12,13 +12,13 @@ import (
 
 // ScrollArgs defines the arguments for the scroll tool.
 type ScrollArgs struct {
-	// X is the X coordinate where scrolling occurs (in image pixels).
-	// Use the pixel position from the screenshot image.
-	X int `json:"x" jsonschema:"X coordinate in image pixels (from the screenshot)"`
+	// X is the X coordinate where scrolling occurs (normalized 0-1000).
+	// 0 = left edge, 500 = center, 1000 = right edge.
+	X int `json:"x" jsonschema:"X coordinate (0-1000 normalized: 0=left, 500=center, 1000=right)"`
 
-	// Y is the Y coordinate where scrolling occurs (in image pixels).
-	// Use the pixel position from the screenshot image.
-	Y int `json:"y" jsonschema:"Y coordinate in image pixels (from the screenshot)"`
+	// Y is the Y coordinate where scrolling occurs (normalized 0-1000).
+	// 0 = top edge, 500 = center, 1000 = bottom edge.
+	Y int `json:"y" jsonschema:"Y coordinate (0-1000 normalized: 0=top, 500=center, 1000=bottom)"`
 
 	// DeltaX is horizontal scroll amount. Positive = right, negative = left.
 	DeltaX int `json:"delta_x,omitzero" jsonschema:"Horizontal scroll amount (positive = right, negative = left)"`
@@ -98,7 +98,7 @@ func NewScrollTool() (tool.Tool, error) {
 	return functiontool.New(
 		functiontool.Config{
 			Name:        "scroll",
-			Description: "Scrolls the mouse wheel at the specified coordinates. Use image pixel coordinates from the screenshot. Positive delta_y scrolls down, negative scrolls up. Positive delta_x scrolls right, negative scrolls left.",
+			Description: "Scrolls the mouse wheel at the specified coordinates. Use normalized 0-1000 coordinates (0=left/top edge, 500=center, 1000=right/bottom edge). Positive delta_y scrolls down, negative scrolls up. Positive delta_x scrolls right, negative scrolls left.",
 		},
 		performScroll,
 	)

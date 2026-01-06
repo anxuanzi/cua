@@ -341,17 +341,54 @@ func clamp(val, min, max int) int {
 }
 
 // ConvertModelCoord converts model output coordinates to screen coordinates.
-// For regular Gemini Pro/Flash (not Google's specialized CUA model), the model outputs
-// coordinates in IMAGE PIXEL space - the pixel position in the screenshot it sees.
+// This function auto-detects whether the model output is:
+// - Normalized (0-1000 range): Common for Gemini 2.5 Pro and CUA models
+// - Image pixels: Actual pixel coordinates in the screenshot
 //
-// This function converts those image pixel coordinates to logical screen coordinates
-// that robotgo uses for mouse input.
+// Auto-detection logic:
+// 1. If coords > 1000 → must be image pixels (normalized max is ~999)
+// 2. If coords >= image dimensions → must be normalized (can't be outside image)
+// 3. If image > 1000px and coords < 1000 → likely normalized
+// 4. Otherwise → treat as image pixels
 //
-// The third return value is always "image_pixel" for logging purposes.
+// Returns the converted screen coordinates and the detected mode for logging.
 func ConvertModelCoord(modelX, modelY int) (screenX, screenY int, mode string) {
-	// Always use image pixel coordinate conversion for regular Gemini models.
-	// Google's specialized CUA model uses 0-1000 normalized coords, but we're
-	// using standard Gemini Pro/Flash which outputs image pixel coordinates.
+	imgW, imgH := imageSize.width, imageSize.height
+
+	// Fallback defaults
+	if imgW == 0 || imgH == 0 {
+		imgW, imgH = 1280, 720
+	}
+
+	// Case 1: Coordinates exceed normalized range (0-999)
+	// Must be image pixel coordinates
+	if modelX > 1000 || modelY > 1000 {
+		screenX, screenY = ImageToScreenCoord(modelX, modelY)
+		return screenX, screenY, "image_pixel"
+	}
+
+	// Case 2: Coordinates exceed image dimensions
+	// Must be normalized (you can't have image pixels outside the image)
+	if modelX >= imgW || modelY >= imgH {
+		screenX, screenY = DenormalizeCoord(modelX, modelY)
+		return screenX, screenY, "normalized"
+	}
+
+	// Case 3: Ambiguous - coords valid for both interpretations
+	// Use heuristic based on image size:
+	// - Large images (>1000px) with small coords → likely normalized
+	// - Small images (<=1000px) → likely image pixels
+	//
+	// Research shows Gemini models typically output normalized 0-1000 coords,
+	// so we prefer that interpretation when the image is larger than 1000px.
+	if imgW > 1000 || imgH > 1000 {
+		// Large image + small coords suggests normalized
+		screenX, screenY = DenormalizeCoord(modelX, modelY)
+		return screenX, screenY, "normalized"
+	}
+
+	// Small image (<=1000px in both dimensions)
+	// Coords likely represent actual image pixels
 	screenX, screenY = ImageToScreenCoord(modelX, modelY)
 	return screenX, screenY, "image_pixel"
 }

@@ -13,21 +13,21 @@ import (
 
 // DragArgs defines the arguments for the drag tool.
 type DragArgs struct {
-	// StartX is the starting X coordinate (in image pixels).
-	// Use the pixel position from the screenshot image.
-	StartX int `json:"start_x" jsonschema:"Starting X coordinate in image pixels (from the screenshot)"`
+	// StartX is the starting X coordinate (normalized 0-1000).
+	// 0 = left edge, 500 = center, 1000 = right edge.
+	StartX int `json:"start_x" jsonschema:"Starting X coordinate (0-1000 normalized: 0=left, 500=center, 1000=right)"`
 
-	// StartY is the starting Y coordinate (in image pixels).
-	// Use the pixel position from the screenshot image.
-	StartY int `json:"start_y" jsonschema:"Starting Y coordinate in image pixels (from the screenshot)"`
+	// StartY is the starting Y coordinate (normalized 0-1000).
+	// 0 = top edge, 500 = center, 1000 = bottom edge.
+	StartY int `json:"start_y" jsonschema:"Starting Y coordinate (0-1000 normalized: 0=top, 500=center, 1000=bottom)"`
 
-	// EndX is the ending X coordinate (in image pixels).
-	// Use the pixel position from the screenshot image.
-	EndX int `json:"end_x" jsonschema:"Ending X coordinate in image pixels (from the screenshot)"`
+	// EndX is the ending X coordinate (normalized 0-1000).
+	// 0 = left edge, 500 = center, 1000 = right edge.
+	EndX int `json:"end_x" jsonschema:"Ending X coordinate (0-1000 normalized: 0=left, 500=center, 1000=right)"`
 
-	// EndY is the ending Y coordinate (in image pixels).
-	// Use the pixel position from the screenshot image.
-	EndY int `json:"end_y" jsonschema:"Ending Y coordinate in image pixels (from the screenshot)"`
+	// EndY is the ending Y coordinate (normalized 0-1000).
+	// 0 = top edge, 500 = center, 1000 = bottom edge.
+	EndY int `json:"end_y" jsonschema:"Ending Y coordinate (0-1000 normalized: 0=top, 500=center, 1000=bottom)"`
 }
 
 // DragResult contains the result of a drag operation.
@@ -129,7 +129,7 @@ func NewDragTool() (tool.Tool, error) {
 	return functiontool.New(
 		functiontool.Config{
 			Name:        "drag",
-			Description: "Performs a mouse drag operation from start coordinates to end coordinates. Use image pixel coordinates from the screenshot. Useful for moving elements, resizing windows, selecting text, or slider adjustments.",
+			Description: "Performs a mouse drag operation from start coordinates to end coordinates. Use normalized 0-1000 coordinates (0=left/top edge, 500=center, 1000=right/bottom edge). Useful for moving elements, resizing windows, selecting text, or slider adjustments.",
 		},
 		performDrag,
 	)
