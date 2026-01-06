@@ -225,9 +225,13 @@ func SavePNG(w io.Writer, img image.Image) error {
 // cachedScaleFactor stores the display scale factor to avoid recalculating.
 var cachedScaleFactor float64
 
-// lastEffectiveScale stores the effective scale from the last screenshot.
-// This includes both display scaling and any image resizing.
-var lastEffectiveScale float64 = 1.0
+// logicalScreenSize stores the logical screen dimensions from the last screenshot.
+// These are the dimensions used for Gemini's normalized coordinate system.
+// Gemini outputs coords in 0-1000 range which must be denormalized to this size.
+var logicalScreenSize struct {
+	width  int
+	height int
+}
 
 // ScaleFactor returns the display scale factor for the primary display.
 // On Retina displays this is typically 2.0, on standard displays it's 1.0.
@@ -263,18 +267,58 @@ func ScaleFactor() float64 {
 	return cachedScaleFactor
 }
 
-// SetEffectiveScale sets the effective scale factor that includes both
-// display scaling and screenshot resizing. This should be called by the
-// screenshot tool after capturing and resizing an image.
-func SetEffectiveScale(scale float64) {
-	lastEffectiveScale = scale
+// SetLogicalScreenSize stores the logical screen dimensions.
+// This should be called by the screenshot tool after capturing.
+// These dimensions are used to denormalize Gemini's 0-1000 coordinate output.
+func SetLogicalScreenSize(width, height int) {
+	logicalScreenSize.width = width
+	logicalScreenSize.height = height
 }
 
-// EffectiveScale returns the effective scale factor from the last screenshot.
-// This is used by click tool to convert coordinates from the resized image
-// back to logical screen coordinates.
-func EffectiveScale() float64 {
-	return lastEffectiveScale
+// LogicalScreenSize returns the logical screen dimensions from the last screenshot.
+func LogicalScreenSize() (width, height int) {
+	return logicalScreenSize.width, logicalScreenSize.height
+}
+
+// DenormalizeCoord converts Gemini's normalized 0-1000 coordinates to logical screen coordinates.
+// Gemini outputs coordinates in a normalized 0-999 grid regardless of actual screen size.
+// This function converts them to actual logical pixel coordinates for mouse input.
+//
+// Example: If screen is 1440x900 and Gemini outputs (500, 300):
+//
+//	x = 500 / 1000 * 1440 = 720
+//	y = 300 / 1000 * 900  = 270
+func DenormalizeCoord(modelX, modelY int) (logicalX, logicalY int) {
+	w, h := logicalScreenSize.width, logicalScreenSize.height
+	if w == 0 || h == 0 {
+		// Fallback: try to get primary display dimensions
+		if disp, err := PrimaryDisplay(); err == nil {
+			w = disp.Bounds.Width
+			h = disp.Bounds.Height
+		} else {
+			// Last resort fallback
+			w, h = 1920, 1080
+		}
+	}
+
+	// Denormalize: model outputs 0-999 normalized coords
+	// Formula: actual = normalized / 1000 * dimension
+	// Clamp to valid range [0, dimension-1]
+	logicalX = clamp(int(float64(modelX)/1000.0*float64(w)+0.5), 0, w-1)
+	logicalY = clamp(int(float64(modelY)/1000.0*float64(h)+0.5), 0, h-1)
+
+	return logicalX, logicalY
+}
+
+// clamp restricts a value to be within [min, max].
+func clamp(val, min, max int) int {
+	if val < min {
+		return min
+	}
+	if val > max {
+		return max
+	}
+	return val
 }
 
 // PhysicalToLogical converts physical pixel coordinates (from screenshot)

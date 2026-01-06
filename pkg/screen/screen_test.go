@@ -398,3 +398,121 @@ func TestCoordinateRoundTrip(t *testing.T) {
 			logicalX, logicalY, physicalX, physicalY, backLogicalX, backLogicalY)
 	}
 }
+
+func TestDenormalizeCoord(t *testing.T) {
+	// Test Gemini's normalized 0-1000 coordinate system
+	// Gemini outputs coords in 0-999 range regardless of screen size
+
+	tests := []struct {
+		name           string
+		screenW        int
+		screenH        int
+		modelX, modelY int
+		wantX, wantY   int
+	}{
+		{
+			name:    "center of 1440x900 screen",
+			screenW: 1440, screenH: 900,
+			modelX: 500, modelY: 500,
+			wantX: 720, wantY: 450,
+		},
+		{
+			name:    "top-left corner",
+			screenW: 1920, screenH: 1080,
+			modelX: 0, modelY: 0,
+			wantX: 0, wantY: 0,
+		},
+		{
+			name:    "bottom-right corner (999)",
+			screenW: 1920, screenH: 1080,
+			modelX: 999, modelY: 999,
+			wantX: 1918, wantY: 1079, // Clamped to max-1
+		},
+		{
+			name:    "quarter positions",
+			screenW: 1000, screenH: 1000,
+			modelX: 250, modelY: 750,
+			wantX: 250, wantY: 750,
+		},
+		{
+			name:    "MacBook-like resolution",
+			screenW: 1512, screenH: 982,
+			modelX: 500, modelY: 300,
+			wantX: 756, wantY: 295, // 500/1000*1512=756, 300/1000*982=294.6≈295
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			// Set the screen size
+			SetLogicalScreenSize(tc.screenW, tc.screenH)
+
+			// Verify it was stored
+			gotW, gotH := LogicalScreenSize()
+			if gotW != tc.screenW || gotH != tc.screenH {
+				t.Errorf("LogicalScreenSize() = (%d, %d), want (%d, %d)",
+					gotW, gotH, tc.screenW, tc.screenH)
+			}
+
+			// Test denormalization
+			gotX, gotY := DenormalizeCoord(tc.modelX, tc.modelY)
+
+			if gotX != tc.wantX || gotY != tc.wantY {
+				t.Errorf("DenormalizeCoord(%d, %d) with screen %dx%d = (%d, %d), want (%d, %d)",
+					tc.modelX, tc.modelY, tc.screenW, tc.screenH, gotX, gotY, tc.wantX, tc.wantY)
+			}
+
+			t.Logf("DenormalizeCoord(%d, %d) with screen %dx%d = (%d, %d)",
+				tc.modelX, tc.modelY, tc.screenW, tc.screenH, gotX, gotY)
+		})
+	}
+}
+
+func TestDenormalizeCoordEdgeCases(t *testing.T) {
+	SetLogicalScreenSize(1920, 1080)
+
+	// Test clamping at boundaries
+	tests := []struct {
+		name        string
+		modelX      int
+		modelY      int
+		wantClamped bool
+	}{
+		{"negative X should clamp to 0", -100, 500, true},
+		{"negative Y should clamp to 0", 500, -100, true},
+		{"X > 1000 should clamp to max", 1500, 500, true},
+		{"Y > 1000 should clamp to max", 500, 1500, true},
+		{"normal values", 500, 500, false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			x, y := DenormalizeCoord(tc.modelX, tc.modelY)
+
+			// Check that values are within bounds
+			screenW, screenH := LogicalScreenSize()
+			if x < 0 || x >= screenW {
+				if tc.wantClamped {
+					// Verify clamping worked
+					if x < 0 || x >= screenW {
+						t.Errorf("Expected clamped X, got %d (screen width: %d)", x, screenW)
+					}
+				} else {
+					t.Errorf("Unexpected out-of-bounds X: %d", x)
+				}
+			}
+			if y < 0 || y >= screenH {
+				if tc.wantClamped {
+					// Verify clamping worked
+					if y < 0 || y >= screenH {
+						t.Errorf("Expected clamped Y, got %d (screen height: %d)", y, screenH)
+					}
+				} else {
+					t.Errorf("Unexpected out-of-bounds Y: %d", y)
+				}
+			}
+
+			t.Logf("DenormalizeCoord(%d, %d) = (%d, %d) clamped=%v", tc.modelX, tc.modelY, x, y, tc.wantClamped)
+		})
+	}
+}

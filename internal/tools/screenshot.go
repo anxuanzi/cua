@@ -81,22 +81,38 @@ type ScreenshotResult struct {
 func takeScreenshot(ctx tool.Context, args ScreenshotArgs) (ScreenshotResult, error) {
 	var img *image.RGBA
 	var err error
+	var logicalWidth, logicalHeight int
 
-	// Get scale factor first (cached)
+	// Get display bounds to determine logical screen size
+	// This is crucial for Gemini coordinate denormalization
+	displayBounds, boundsErr := screen.GetDisplayBounds(args.DisplayIndex)
+	if boundsErr != nil {
+		// Fallback to primary display
+		displayBounds, _ = screen.GetDisplayBounds(0)
+	}
+	logicalWidth = displayBounds.Width
+	logicalHeight = displayBounds.Height
+
+	// Get scale factor for logging
 	scaleFactor := screen.ScaleFactor()
 
 	// Capture based on arguments
 	if args.Region != nil {
-		logging.Info("[screenshot] Capturing region: x=%d, y=%d, w=%d, h=%d (scale=%.2f)",
-			args.Region.X, args.Region.Y, args.Region.Width, args.Region.Height, scaleFactor)
+		logging.Info("[screenshot] Capturing region: x=%d, y=%d, w=%d, h=%d (logical_screen=%dx%d, scale=%.2f)",
+			args.Region.X, args.Region.Y, args.Region.Width, args.Region.Height,
+			logicalWidth, logicalHeight, scaleFactor)
 		img, err = screen.CaptureRect(screen.Rect{
 			X:      args.Region.X,
 			Y:      args.Region.Y,
 			Width:  args.Region.Width,
 			Height: args.Region.Height,
 		})
+		// For region capture, use the region size as logical dimensions
+		logicalWidth = args.Region.Width
+		logicalHeight = args.Region.Height
 	} else {
-		logging.Info("[screenshot] Capturing display %d (scale=%.2f)", args.DisplayIndex, scaleFactor)
+		logging.Info("[screenshot] Capturing display %d (logical_screen=%dx%d, scale=%.2f)",
+			args.DisplayIndex, logicalWidth, logicalHeight, scaleFactor)
 		img, err = screen.CaptureDisplay(args.DisplayIndex)
 	}
 
@@ -134,29 +150,20 @@ func takeScreenshot(ctx tool.Context, args ScreenshotArgs) (ScreenshotResult, er
 	// Convert to base64
 	base64Img := base64.StdEncoding.EncodeToString(buf.Bytes())
 
-	// Calculate the effective scale for coordinate mapping
-	// The model sees resizedW x resizedH image
-	// To convert image coords to logical screen coords:
-	//   1. Scale up to original physical: multiply by (originalW / resizedW)
-	//   2. Convert physical to logical: divide by scaleFactor
-	// Combined: image_coords * (originalW / resizedW) / scaleFactor
-	//
-	// We store the multiplier so click can do: logical = image_coords * effectiveScale
-	// effectiveScale = (originalW / resizedW) / scaleFactor
-	effectiveScale := (float64(originalW) / float64(resizedW)) / scaleFactor
+	// Store the logical screen size for Gemini coordinate denormalization
+	// Gemini outputs coordinates in normalized 0-1000 range regardless of image size
+	// The click tool will use these dimensions to convert: actual = normalized / 1000 * dimension
+	screen.SetLogicalScreenSize(logicalWidth, logicalHeight)
 
-	// Store the effective scale for the click tool to use
-	screen.SetEffectiveScale(effectiveScale)
-
-	logging.Info("[screenshot] Success: %dx%d → %dx%d, %d bytes (%.1f KB), effective_scale=%.4f (display_scale=%.2f)",
-		originalW, originalH, resizedW, resizedH, buf.Len(), float64(buf.Len())/1024, effectiveScale, scaleFactor)
+	logging.Info("[screenshot] Success: %dx%d → %dx%d, %d bytes (%.1f KB), logical_screen=%dx%d",
+		originalW, originalH, resizedW, resizedH, buf.Len(), float64(buf.Len())/1024, logicalWidth, logicalHeight)
 
 	return ScreenshotResult{
 		Success:     true,
 		ImageBase64: base64Img,
 		Width:       resizedW,
 		Height:      resizedH,
-		ScaleFactor: effectiveScale, // This is the multiplier to convert image coords to logical coords
+		ScaleFactor: scaleFactor, // Display scale factor (for reference)
 	}, nil
 }
 

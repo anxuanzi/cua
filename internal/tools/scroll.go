@@ -12,11 +12,11 @@ import (
 
 // ScrollArgs defines the arguments for the scroll tool.
 type ScrollArgs struct {
-	// X is the X coordinate where scrolling occurs (from screenshot image).
-	X int `json:"x" jsonschema:"X coordinate (from screenshot image) where scroll occurs"`
+	// X is the X coordinate where scrolling occurs (normalized 0-1000 from Gemini).
+	X int `json:"x" jsonschema:"X coordinate (normalized 0-1000 from model output) where scroll occurs"`
 
-	// Y is the Y coordinate where scrolling occurs (from screenshot image).
-	Y int `json:"y" jsonschema:"Y coordinate (from screenshot image) where scroll occurs"`
+	// Y is the Y coordinate where scrolling occurs (normalized 0-1000 from Gemini).
+	Y int `json:"y" jsonschema:"Y coordinate (normalized 0-1000 from model output) where scroll occurs"`
 
 	// DeltaX is horizontal scroll amount. Positive = right, negative = left.
 	DeltaX int `json:"delta_x,omitzero" jsonschema:"Horizontal scroll amount (positive = right, negative = left)"`
@@ -58,15 +58,14 @@ func performScroll(ctx tool.Context, args ScrollArgs) (ScrollResult, error) {
 		}, nil
 	}
 
-	// Get the effective scale from the last screenshot
-	effectiveScale := screen.EffectiveScale()
+	// Denormalize Gemini's 0-1000 coordinates to logical screen coordinates
+	logicalX, logicalY := screen.DenormalizeCoord(args.X, args.Y)
 
-	// Convert image coordinates to logical screen coordinates
-	logicalX := int(float64(args.X) * effectiveScale)
-	logicalY := int(float64(args.Y) * effectiveScale)
+	// Get screen size for logging
+	screenW, screenH := screen.LogicalScreenSize()
 
-	logging.Info("[scroll] at image(%d, %d) → logical(%d, %d), delta=(%d, %d) [effective_scale=%.4f]",
-		args.X, args.Y, logicalX, logicalY, args.DeltaX, args.DeltaY, effectiveScale)
+	logging.Info("[scroll] at normalized(%d, %d) → logical(%d, %d), delta=(%d, %d) [screen=%dx%d]",
+		args.X, args.Y, logicalX, logicalY, args.DeltaX, args.DeltaY, screenW, screenH)
 
 	err := input.ScrollAt(input.Point{X: logicalX, Y: logicalY}, args.DeltaX, args.DeltaY)
 	if err != nil {

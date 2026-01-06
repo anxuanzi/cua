@@ -12,13 +12,15 @@ import (
 
 // ClickArgs defines the arguments for the click tool.
 type ClickArgs struct {
-	// X is the X coordinate to click (in physical pixels from screenshot).
-	// Automatically converted to logical coordinates for mouse input.
-	X int `json:"x" jsonschema:"X coordinate in physical pixels (from screenshot)"`
+	// X is the X coordinate to click (normalized 0-1000 from Gemini).
+	// Gemini outputs coordinates in a normalized 0-999 grid regardless of screen size.
+	// Automatically denormalized to logical screen coordinates for mouse input.
+	X int `json:"x" jsonschema:"X coordinate (normalized 0-1000 from model output)"`
 
-	// Y is the Y coordinate to click (in physical pixels from screenshot).
-	// Automatically converted to logical coordinates for mouse input.
-	Y int `json:"y" jsonschema:"Y coordinate in physical pixels (from screenshot)"`
+	// Y is the Y coordinate to click (normalized 0-1000 from Gemini).
+	// Gemini outputs coordinates in a normalized 0-999 grid regardless of screen size.
+	// Automatically denormalized to logical screen coordinates for mouse input.
+	Y int `json:"y" jsonschema:"Y coordinate (normalized 0-1000 from model output)"`
 
 	// ClickType specifies the type of click: "left", "right", or "double".
 	// Defaults to "left" if not specified.
@@ -50,17 +52,16 @@ func performClick(ctx tool.Context, args ClickArgs) (ClickResult, error) {
 		clickType = "left"
 	}
 
-	// Get the effective scale from the last screenshot
-	// This includes both display scaling and any image resizing
-	effectiveScale := screen.EffectiveScale()
+	// Denormalize Gemini's 0-1000 coordinates to logical screen coordinates
+	// Gemini outputs coords in normalized 0-999 grid regardless of screen/image size
+	// Formula: actual = normalized / 1000 * screen_dimension
+	logicalX, logicalY := screen.DenormalizeCoord(args.X, args.Y)
 
-	// Convert image coordinates to logical screen coordinates
-	// logical = image_coords * effectiveScale
-	logicalX := int(float64(args.X) * effectiveScale)
-	logicalY := int(float64(args.Y) * effectiveScale)
+	// Get screen size for logging
+	screenW, screenH := screen.LogicalScreenSize()
 
-	logging.Info("[click] %s at image(%d, %d) → logical(%d, %d) [effective_scale=%.4f]",
-		clickType, args.X, args.Y, logicalX, logicalY, effectiveScale)
+	logging.Info("[click] %s at normalized(%d, %d) → logical(%d, %d) [screen=%dx%d]",
+		clickType, args.X, args.Y, logicalX, logicalY, screenW, screenH)
 
 	point := input.Point{X: logicalX, Y: logicalY}
 	var err error

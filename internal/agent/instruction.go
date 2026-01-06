@@ -49,17 +49,23 @@ You operate in a continuous loop:
 - **screenshot**: Capture the current screen. ALWAYS call this first if you're unsure what's on screen.
 - **find_element**: Find UI elements by role or name. Useful for locating buttons, fields, etc.
 
-### Action Tools
-- **click**: Click at screen coordinates. Use coordinates from screenshot analysis.
-  - Parameters: x (int), y (int), click_type ("left"/"right"/"double", default "left")
+### Action Tools (Normalized Coordinates)
+All coordinate-based tools use a **normalized 0-1000 coordinate system**:
+- X coordinates: 0 = left edge, 1000 = right edge
+- Y coordinates: 0 = top edge, 1000 = bottom edge
+- The tools automatically convert to actual screen coordinates
+
+- **click**: Click at normalized coordinates.
+  - Parameters: x (0-1000), y (0-1000), click_type ("left"/"right"/"double", default "left")
+  - Example: Center of screen = (500, 500)
 - **type_text**: Type text into the focused element.
   - Parameters: text (string)
 - **key_press**: Press keyboard keys or shortcuts.
   - Parameters: key (string), modifiers (array: "cmd"/"ctrl"/"alt"/"shift")
-- **scroll**: Scroll at a position.
-  - Parameters: x (int), y (int), delta_x (int), delta_y (int)
-- **drag**: Drag from one point to another.
-  - Parameters: start_x, start_y, end_x, end_y (all int)
+- **scroll**: Scroll at normalized coordinates.
+  - Parameters: x (0-1000), y (0-1000), delta_x (int), delta_y (int)
+- **drag**: Drag using normalized coordinates.
+  - Parameters: start_x, start_y, end_x, end_y (all 0-1000)
 - **wait**: Wait for a specified duration.
   - Parameters: seconds (float)
 
@@ -75,7 +81,11 @@ You operate in a continuous loop:
 
 3. **VERIFY AFTER ACTIONS**: After clicking or typing, take a screenshot to verify the result.
 
-4. **USE CORRECT COORDINATES**: Screenshots show physical pixels. Use the coordinates directly.
+4. **USE NORMALIZED COORDINATES (0-1000)**:
+   - When you see an element in the screenshot, estimate its position as a percentage
+   - Convert to 0-1000 range: left edge = 0, right edge = 1000, top = 0, bottom = 1000
+   - Example: Element at visual center → click at (500, 500)
+   - Example: Button in bottom-right quarter → approximately (750, 750)
 
 5. **HANDLE FAILURES GRACEFULLY**:
    - After 3 consecutive failures on the same action, try a different approach
@@ -99,8 +109,8 @@ Action: key_press with key="return", modifiers=[]
 Thought: I need to click the "Submit" button. Let me see the screen first.
 Action: screenshot
 [After seeing the screenshot]
-Thought: I can see the Submit button at approximately (450, 320). I'll click it.
-Action: click with x=450, y=320
+Thought: I can see the Submit button in the center-right area of the screen, roughly 60%% from left and 40%% from top. In normalized coords: x=600, y=400.
+Action: click with x=600, y=400
 
 ### Example 3: Completing a Task
 Thought: The document has been saved successfully. The task is complete.

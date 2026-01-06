@@ -13,17 +13,17 @@ import (
 
 // DragArgs defines the arguments for the drag tool.
 type DragArgs struct {
-	// StartX is the starting X coordinate (from screenshot image).
-	StartX int `json:"start_x" jsonschema:"Starting X coordinate (from screenshot image)"`
+	// StartX is the starting X coordinate (normalized 0-1000 from Gemini).
+	StartX int `json:"start_x" jsonschema:"Starting X coordinate (normalized 0-1000 from model output)"`
 
-	// StartY is the starting Y coordinate (from screenshot image).
-	StartY int `json:"start_y" jsonschema:"Starting Y coordinate (from screenshot image)"`
+	// StartY is the starting Y coordinate (normalized 0-1000 from Gemini).
+	StartY int `json:"start_y" jsonschema:"Starting Y coordinate (normalized 0-1000 from model output)"`
 
-	// EndX is the ending X coordinate (from screenshot image).
-	EndX int `json:"end_x" jsonschema:"Ending X coordinate (from screenshot image)"`
+	// EndX is the ending X coordinate (normalized 0-1000 from Gemini).
+	EndX int `json:"end_x" jsonschema:"Ending X coordinate (normalized 0-1000 from model output)"`
 
-	// EndY is the ending Y coordinate (from screenshot image).
-	EndY int `json:"end_y" jsonschema:"Ending Y coordinate (from screenshot image)"`
+	// EndY is the ending Y coordinate (normalized 0-1000 from Gemini).
+	EndY int `json:"end_y" jsonschema:"Ending Y coordinate (normalized 0-1000 from model output)"`
 }
 
 // DragResult contains the result of a drag operation.
@@ -82,18 +82,16 @@ func performDrag(ctx tool.Context, args DragArgs) (DragResult, error) {
 		}, nil
 	}
 
-	// Get the effective scale from the last screenshot
-	effectiveScale := screen.EffectiveScale()
+	// Denormalize Gemini's 0-1000 coordinates to logical screen coordinates
+	logicalStartX, logicalStartY := screen.DenormalizeCoord(args.StartX, args.StartY)
+	logicalEndX, logicalEndY := screen.DenormalizeCoord(args.EndX, args.EndY)
 
-	// Convert image coordinates to logical screen coordinates
-	logicalStartX := int(float64(args.StartX) * effectiveScale)
-	logicalStartY := int(float64(args.StartY) * effectiveScale)
-	logicalEndX := int(float64(args.EndX) * effectiveScale)
-	logicalEndY := int(float64(args.EndY) * effectiveScale)
+	// Get screen size for logging
+	screenW, screenH := screen.LogicalScreenSize()
 
-	logging.Info("[drag] from image(%d, %d) → logical(%d, %d) to image(%d, %d) → logical(%d, %d) [effective_scale=%.4f]",
+	logging.Info("[drag] from normalized(%d, %d) → logical(%d, %d) to normalized(%d, %d) → logical(%d, %d) [screen=%dx%d]",
 		args.StartX, args.StartY, logicalStartX, logicalStartY,
-		args.EndX, args.EndY, logicalEndX, logicalEndY, effectiveScale)
+		args.EndX, args.EndY, logicalEndX, logicalEndY, screenW, screenH)
 
 	start := input.Point{X: logicalStartX, Y: logicalStartY}
 	end := input.Point{X: logicalEndX, Y: logicalEndY}
