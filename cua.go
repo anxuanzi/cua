@@ -25,6 +25,7 @@ import (
 	"github.com/Ingenimax/agent-sdk-go/pkg/agent"
 	"github.com/Ingenimax/agent-sdk-go/pkg/interfaces"
 	"github.com/Ingenimax/agent-sdk-go/pkg/llm/anthropic"
+	"github.com/Ingenimax/agent-sdk-go/pkg/llm/gemini"
 	"github.com/Ingenimax/agent-sdk-go/pkg/llm/openai"
 	"github.com/Ingenimax/agent-sdk-go/pkg/memory"
 
@@ -74,6 +75,19 @@ func New(opts ...Option) (*CUA, error) {
 			cfg.APIKey,
 			openai.WithModel(model),
 		)
+	case ProviderGemini:
+		model := cfg.Model
+		if model == "" {
+			model = "gemini-2.5-flash"
+		}
+		llmClient, err = gemini.NewClient(
+			context.Background(),
+			gemini.WithAPIKey(cfg.APIKey),
+			gemini.WithModel(model),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create Gemini client: %w", err)
+		}
 	default:
 		return nil, fmt.Errorf("unsupported provider: %s", cfg.Provider)
 	}

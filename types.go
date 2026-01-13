@@ -9,6 +9,8 @@ const (
 	ProviderAnthropic LLMProvider = "anthropic"
 	// ProviderOpenAI uses OpenAI's GPT models.
 	ProviderOpenAI LLMProvider = "openai"
+	// ProviderGemini uses Google's Gemini models.
+	ProviderGemini LLMProvider = "gemini"
 )
 
 // Config holds the configuration for the CUA agent.
