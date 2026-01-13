@@ -5,7 +5,7 @@
 // 2. Execute individual tools directly
 // 3. Run a full task with the LLM-powered Run method
 //
-// Run with: ANTHROPIC_API_KEY=your-key go run main.go
+// Run with: GEMINI_API_KEY=your-key go run main.go
 package main
 
 import (
@@ -46,7 +46,7 @@ func main() {
 
 	// Example 1: Get screen info
 	fmt.Println("1. Getting Screen Info:")
-	result, err := agent.ExecuteTool(ctx, "get_screen_info", `{"screen_index": 0}`)
+	result, err := agent.ExecuteTool(ctx, "screen_info", `{"screen_index": 0}`)
 	if err != nil {
 		log.Fatalf("Failed to get screen info: %v", err)
 	}
@@ -54,7 +54,7 @@ func main() {
 
 	// Example 2: Take a screenshot
 	fmt.Println("\n2. Taking Screenshot:")
-	result, err = agent.ExecuteTool(ctx, "screenshot", `{}`)
+	result, err = agent.ExecuteTool(ctx, "screen_capture", `{}`)
 	if err != nil {
 		log.Fatalf("Failed to take screenshot: %v", err)
 	}
@@ -78,14 +78,14 @@ func main() {
 
 	if apiKey == "" {
 		fmt.Println("Skipping LLM task execution (no API key)")
-		fmt.Println("To see full automation, set ANTHROPIC_API_KEY and run again.")
+		fmt.Println("To see full automation, set GEMINI_API_KEY and run again.")
 	} else {
-		// Example: Run a simple task using LLM
-		fmt.Println("Running task: 'Take a screenshot and describe what you see'")
-		fmt.Println("(This will use Claude to analyze the screen)")
+		// Example: Run a calculator task using LLM
+		fmt.Println("Running task: 'Open Calculator and compute 123 * 456'")
+		fmt.Println("(This will use Gemini to automate the Calculator app)")
 		fmt.Println()
 
-		result, err := agent.Run(ctx, "Take a screenshot and briefly describe what you see on the screen.")
+		result, err := agent.Run(ctx, "Open the Calculator app (use Spotlight with cmd+space, type 'Calculator', press enter). Then calculate 123 * 456 and tell me the result.")
 		if err != nil {
 			log.Printf("Task failed: %v", err)
 		} else {

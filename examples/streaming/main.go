@@ -5,7 +5,7 @@
 // 2. Use RunStream to see real-time events
 // 3. Handle thinking, tool calls, and observations
 //
-// Run with: ANTHROPIC_API_KEY=your-key go run main.go
+// Run with: GEMINI_API_KEY=your-key go run main.go
 package main
 
 import (
@@ -21,19 +21,17 @@ import (
 
 func main() {
 	// Get API key from environment
-	apiKey := os.Getenv("ANTHROPIC_API_KEY")
+	apiKey := os.Getenv("GEMINI_API_KEY")
 	if apiKey == "" {
-		fmt.Println("Error: ANTHROPIC_API_KEY environment variable is required for streaming.")
-		fmt.Println("Usage: ANTHROPIC_API_KEY=your-key go run main.go")
+		fmt.Println("Error: GEMINI_API_KEY environment variable is required for streaming.")
+		fmt.Println("Usage: GEMINI_API_KEY=your-key go run main.go")
 		os.Exit(1)
 	}
 
-	// Create CUA instance with Anthropic
+	// Create CUA instance with Gemini
 	agent, err := cua.New(
 		cua.WithAPIKey(apiKey),
-		cua.WithProvider(cua.ProviderAnthropic),
-		cua.WithReasoning(true),       // Enable extended thinking
-		cua.WithReasoningBudget(4096), // Token budget for reasoning
+		cua.WithProvider(cua.ProviderGemini),
 	)
 	if err != nil {
 		log.Fatalf("Failed to create CUA: %v", err)
@@ -42,11 +40,11 @@ func main() {
 	ctx := context.Background()
 
 	fmt.Println("=== CUA Streaming Example ===")
-	fmt.Println("This demonstrates real-time ReAct events from the LLM.")
+	fmt.Println("This demonstrates real-time ReAct events from Gemini.")
 	fmt.Println()
 
-	// Task to execute
-	task := "Take a screenshot and describe what application is currently in focus."
+	// Task to execute - Calculator example
+	task := "Open the Calculator app (use Spotlight with cmd+space, type 'Calculator', press enter). Then calculate 987 + 654 and tell me the result."
 	fmt.Printf("Task: %s\n", task)
 	fmt.Println()
 	fmt.Println("--- Starting ReAct Loop ---")
