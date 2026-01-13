@@ -20,9 +20,9 @@ import (
 
 func main() {
 	// Get API key from environment
-	apiKey := os.Getenv("ANTHROPIC_API_KEY")
+	apiKey := os.Getenv("GEMINI_API_KEY")
 	if apiKey == "" {
-		fmt.Println("Note: ANTHROPIC_API_KEY not set. Some features will be limited.")
+		fmt.Println("Note: GEMINI_API_KEY not set. Some features will be limited.")
 		fmt.Println("Set it to use the full LLM-powered automation.")
 		fmt.Println()
 	}
@@ -30,7 +30,7 @@ func main() {
 	// Create CUA instance
 	agent, err := cua.New(
 		cua.WithAPIKey(apiKey),
-		cua.WithProvider(cua.ProviderAnthropic),
+		cua.WithProvider(cua.ProviderGemini),
 		cua.WithScreenIndex(0), // Primary screen
 	)
 	if err != nil {
