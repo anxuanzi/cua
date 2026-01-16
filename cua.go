@@ -656,11 +656,16 @@ Screen: %dx%d pixels (index: %d, scale: %.1fx)
 </environment>
 
 <coordinate_system>
-All coordinates use a normalized 0-1000 scale (resolution-independent):
-- (0, 0) = top-left corner
-- (1000, 1000) = bottom-right corner
-- (500, 500) = center of screen
-Convert mentally: position = (normalized / 1000) × screen_dimension
+Coordinates use IMAGE PIXEL positions from the screenshot you see.
+When you take a screenshot, note the image dimensions (image_width, image_height).
+Click coordinates should be pixel positions within that image.
+
+Example: If screenshot is 1108x720 and you want to click center, use x=554, y=360.
+The system automatically converts image pixels to screen coordinates.
+
+For precise clicking:
+- Estimate the pixel position of your target IN THE IMAGE you see
+- Use those pixel values directly as x, y coordinates
 </coordinate_system>
 
 <tools>
@@ -672,10 +677,10 @@ APPLICATION CONTROL (ALWAYS use for launching apps):
 - app_launch: Launch app by name. ALWAYS use this instead of Spotlight/Start menu!
 - app_list: List installed apps, optionally filter by search term.
 
-MOUSE ACTIONS (coordinates in 0-1000 range):
-- mouse_click: Click at (x, y). Use for buttons, links, icons.
-- mouse_move: Move cursor without clicking. Use for hover states.
-- mouse_drag: Drag from (x1, y1) to (x2, y2). Use for selections, sliders.
+MOUSE ACTIONS (coordinates in IMAGE PIXELS):
+- mouse_click: Click at (x, y) in image pixel coordinates.
+- mouse_move: Move cursor to (x, y) without clicking.
+- mouse_drag: Drag from (start_x, start_y) to (end_x, end_y).
 - mouse_scroll: Scroll at position. Direction: up/down/left/right.
 
 KEYBOARD ACTIONS:
@@ -731,22 +736,42 @@ VERIFICATION:
 </agent_strategy>
 
 <coordinate_tips>
+COORDINATE SYSTEM (Normalized 0-1000 Scale):
+All coordinates are NORMALIZED to 0-1000. You MUST output normalized positions.
+- (0, 0) = TOP-LEFT corner of screen
+- (1000, 1000) = BOTTOM-RIGHT corner of screen
+- (500, 500) = CENTER of screen
+- X-axis: 0=left edge, 500=center, 1000=right edge
+- Y-axis: 0=top edge, 500=center, 1000=bottom edge
+
 CLICKING ACCURACY:
 - Always click CENTER of UI elements (not edges)
-- Buttons/icons: estimate center based on visual bounds
-- Text links: click middle of the text
+- Estimate the normalized position (0-1000) based on where the element appears in the screenshot
 - If click misses, adjust by 20-50 units and retry
 
-COMMON ELEMENT LOCATIONS (normalized 0-1000):
-- Menu bar items: y ≈ 10-25
-- Window title bar: y ≈ 0-40 relative to window
-- Scroll bars: typically x ≈ 980-1000 (right edge)
-- Dialog buttons: often bottom-right of dialog (x ≈ 700-900, y ≈ 700-900 of dialog)
+HOW TO CALCULATE COORDINATES:
+1. Look at where your target appears in the screenshot
+2. Estimate its relative position on screen as a percentage
+3. Convert to 0-1000 scale: position = percentage * 10
+   - Element at 25% from left → x = 250
+   - Element at 75% from top → y = 750
+4. Use those normalized values for mouse_click coordinates
+
+QUICK REFERENCE:
+- TOP-LEFT corner: (20, 20) - Apple menu area on macOS
+- TOP-RIGHT corner: (980, 20) - clock/date area
+- CENTER: (500, 500) - middle of screen
+- BOTTOM-LEFT corner: (20, 980) - Dock left side
+- BOTTOM-RIGHT corner: (980, 980) - Dock right side
+- Left quarter: x ≈ 250
+- Right quarter: x ≈ 750
+- Top quarter: y ≈ 250
+- Bottom quarter: y ≈ 750
 </coordinate_tips>
 
 <execution_tips>
 - Screenshot first, never act blind
-- Calculate coordinates from visual observation
+- All mouse coordinates use normalized 0-1000 scale (NOT pixel coordinates)
 - ALWAYS use app_launch to open apps (NEVER use Spotlight/Start menu)
 - Prefer keyboard shortcuts when reliable
 - For text: click to focus, then type

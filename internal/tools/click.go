@@ -2,14 +2,13 @@ package tools
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/anxuanzi/cua/internal/coords"
 	"github.com/go-vgo/robotgo"
 )
 
-// ClickTool performs mouse clicks at normalized coordinates.
+// ClickTool performs mouse clicks at normalized coordinates (0-1000 scale).
 type ClickTool struct {
 	BaseTool
 	// ScreenIndex specifies which screen to use (default: 0 = primary).
@@ -26,19 +25,19 @@ func (t *ClickTool) Name() string {
 }
 
 func (t *ClickTool) Description() string {
-	return `Click at a position on the screen. Coordinates use a 0-1000 normalized scale where (0,0) is the top-left corner and (1000,1000) is the bottom-right corner. This scale is resolution-independent and works the same on any screen size.`
+	return `Click at a position on the screen. Coordinates are NORMALIZED to 0-1000 scale. (0,0) is top-left, (1000,1000) is bottom-right. Example: center of screen = (500, 500), top-right corner = (1000, 0).`
 }
 
 func (t *ClickTool) Parameters() map[string]ParameterSpec {
 	return map[string]ParameterSpec{
 		"x": {
 			Type:        "integer",
-			Description: "X coordinate (0-1000 normalized scale, where 0=left, 1000=right)",
+			Description: "X coordinate normalized 0-1000 (0=left edge, 500=center, 1000=right edge)",
 			Required:    true,
 		},
 		"y": {
 			Type:        "integer",
-			Description: "Y coordinate (0-1000 normalized scale, where 0=top, 1000=bottom)",
+			Description: "Y coordinate normalized 0-1000 (0=top edge, 500=center, 1000=bottom edge)",
 			Required:    true,
 		},
 		"button": {
@@ -74,15 +73,15 @@ func (t *ClickTool) Execute(ctx context.Context, argsJSON string) (string, error
 	args.Button = "left" // default
 
 	if err := ParseArgs(argsJSON, &args); err != nil {
-		return ErrorResponse("invalid arguments: "+err.Error(), "Provide x and y coordinates (0-1000)"), nil
+		return ErrorResponse("invalid arguments: "+err.Error(), "Provide x and y coordinates in 0-1000 normalized scale"), nil
 	}
 
-	// Validate coordinates
-	if args.X < 0 || args.X > coords.NormalizedMax {
-		return ErrorResponse(fmt.Sprintf("x coordinate must be 0-%d, got %d", coords.NormalizedMax, args.X), "Use normalized coordinates where 0=left, 1000=right"), nil
+	// Validate normalized coordinates (allow slight overflow for edge cases)
+	if args.X < 0 || args.X > 1000 {
+		return ErrorResponse("x coordinate out of range", "Use normalized 0-1000 scale (0=left, 500=center, 1000=right)"), nil
 	}
-	if args.Y < 0 || args.Y > coords.NormalizedMax {
-		return ErrorResponse(fmt.Sprintf("y coordinate must be 0-%d, got %d", coords.NormalizedMax, args.Y), "Use normalized coordinates where 0=top, 1000=bottom"), nil
+	if args.Y < 0 || args.Y > 1000 {
+		return ErrorResponse("y coordinate out of range", "Use normalized 0-1000 scale (0=top, 500=center, 1000=bottom)"), nil
 	}
 
 	// Get screen info
@@ -92,14 +91,13 @@ func (t *ClickTool) Execute(ctx context.Context, argsJSON string) (string, error
 	}
 	screen := coords.GetScreen(screenIndex)
 
-	// Denormalize coordinates to screen pixels
-	pixel := coords.Denormalize(
-		coords.NormalizedPoint{X: args.X, Y: args.Y},
-		screen,
-	)
+	// Convert normalized coordinates (0-1000) to absolute screen coordinates
+	// Formula: screen_coord = (normalized / 1000) * screen_dimension
+	screenX := screen.X + int(float64(args.X)/1000.0*float64(screen.Width))
+	screenY := screen.Y + int(float64(args.Y)/1000.0*float64(screen.Height))
 
 	// Move to position with human-like timing
-	robotgo.Move(pixel.X, pixel.Y)
+	robotgo.Move(screenX, screenY)
 
 	// Human-like delay after moving (150-200ms feels natural)
 	time.Sleep(150 * time.Millisecond)
@@ -115,11 +113,12 @@ func (t *ClickTool) Execute(ctx context.Context, argsJSON string) (string, error
 	time.Sleep(100 * time.Millisecond)
 
 	return SuccessResponse(map[string]interface{}{
-		"clicked_at_pixel": map[string]int{"x": pixel.X, "y": pixel.Y},
-		"normalized":       map[string]int{"x": args.X, "y": args.Y},
-		"button":           args.Button,
-		"double_click":     args.Double,
-		"screen_index":     screenIndex,
+		"clicked_at_screen": map[string]int{"x": screenX, "y": screenY},
+		"normalized_coords": map[string]int{"x": args.X, "y": args.Y},
+		"screen_dimensions": map[string]int{"width": screen.Width, "height": screen.Height},
+		"button":            args.Button,
+		"double_click":      args.Double,
+		"screen_index":      screenIndex,
 	}), nil
 }
 

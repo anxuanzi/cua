@@ -2,13 +2,12 @@ package tools
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/anxuanzi/cua/internal/coords"
 	"github.com/go-vgo/robotgo"
 )
 
-// MoveTool moves the mouse cursor without clicking.
+// MoveTool moves the mouse cursor to a position using normalized coordinates (0-1000 scale).
 type MoveTool struct {
 	BaseTool
 	// ScreenIndex specifies which screen to use (default: 0 = primary).
@@ -25,19 +24,19 @@ func (t *MoveTool) Name() string {
 }
 
 func (t *MoveTool) Description() string {
-	return `Move the mouse cursor to a position without clicking. Coordinates use a 0-1000 normalized scale where (0,0) is the top-left corner and (1000,1000) is the bottom-right corner. Use this for hover actions or to position the cursor before other actions.`
+	return `Move the mouse cursor to a position on the screen. Coordinates are NORMALIZED to 0-1000 scale. (0,0) is top-left, (1000,1000) is bottom-right. Example: center of screen = (500, 500).`
 }
 
 func (t *MoveTool) Parameters() map[string]ParameterSpec {
 	return map[string]ParameterSpec{
 		"x": {
 			Type:        "integer",
-			Description: "X coordinate (0-1000 normalized scale)",
+			Description: "X coordinate normalized 0-1000 (0=left edge, 500=center, 1000=right edge)",
 			Required:    true,
 		},
 		"y": {
 			Type:        "integer",
-			Description: "Y coordinate (0-1000 normalized scale)",
+			Description: "Y coordinate normalized 0-1000 (0=top edge, 500=center, 1000=bottom edge)",
 			Required:    true,
 		},
 		"screen_index": {
@@ -57,15 +56,15 @@ func (t *MoveTool) Execute(ctx context.Context, argsJSON string) (string, error)
 	}
 
 	if err := ParseArgs(argsJSON, &args); err != nil {
-		return ErrorResponse("invalid arguments: "+err.Error(), "Provide x and y coordinates (0-1000)"), nil
+		return ErrorResponse("invalid arguments: "+err.Error(), "Provide x and y coordinates in 0-1000 normalized scale"), nil
 	}
 
-	// Validate coordinates
-	if args.X < 0 || args.X > coords.NormalizedMax {
-		return ErrorResponse(fmt.Sprintf("x coordinate must be 0-%d, got %d", coords.NormalizedMax, args.X), ""), nil
+	// Validate normalized coordinates
+	if args.X < 0 || args.X > 1000 {
+		return ErrorResponse("x coordinate out of range", "Use normalized 0-1000 scale (0=left, 500=center, 1000=right)"), nil
 	}
-	if args.Y < 0 || args.Y > coords.NormalizedMax {
-		return ErrorResponse(fmt.Sprintf("y coordinate must be 0-%d, got %d", coords.NormalizedMax, args.Y), ""), nil
+	if args.Y < 0 || args.Y > 1000 {
+		return ErrorResponse("y coordinate out of range", "Use normalized 0-1000 scale (0=top, 500=center, 1000=bottom)"), nil
 	}
 
 	// Get screen info
@@ -75,19 +74,18 @@ func (t *MoveTool) Execute(ctx context.Context, argsJSON string) (string, error)
 	}
 	screen := coords.GetScreen(screenIndex)
 
-	// Denormalize coordinates
-	pixel := coords.Denormalize(
-		coords.NormalizedPoint{X: args.X, Y: args.Y},
-		screen,
-	)
+	// Convert normalized coordinates (0-1000) to absolute screen coordinates
+	screenX := screen.X + int(float64(args.X)/1000.0*float64(screen.Width))
+	screenY := screen.Y + int(float64(args.Y)/1000.0*float64(screen.Height))
 
 	// Move cursor
-	robotgo.Move(pixel.X, pixel.Y)
+	robotgo.Move(screenX, screenY)
 
 	return SuccessResponse(map[string]interface{}{
-		"moved_to_pixel": map[string]int{"x": pixel.X, "y": pixel.Y},
-		"normalized":     map[string]int{"x": args.X, "y": args.Y},
-		"screen_index":   screenIndex,
+		"moved_to_screen":   map[string]int{"x": screenX, "y": screenY},
+		"normalized_coords": map[string]int{"x": args.X, "y": args.Y},
+		"screen_dimensions": map[string]int{"width": screen.Width, "height": screen.Height},
+		"screen_index":      screenIndex,
 	}), nil
 }
 

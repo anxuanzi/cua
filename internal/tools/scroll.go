@@ -2,14 +2,13 @@ package tools
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/anxuanzi/cua/internal/coords"
 	"github.com/go-vgo/robotgo"
 )
 
-// ScrollTool performs scroll operations.
+// ScrollTool performs scroll operations using normalized coordinates (0-1000 scale).
 type ScrollTool struct {
 	BaseTool
 	// ScreenIndex specifies which screen to use (default: 0 = primary).
@@ -26,19 +25,19 @@ func (t *ScrollTool) Name() string {
 }
 
 func (t *ScrollTool) Description() string {
-	return `Scroll at a position on the screen. First moves the cursor to the specified position, then scrolls in the specified direction. Coordinates use 0-1000 normalized scale.`
+	return `Scroll at a position on the screen. Coordinates are NORMALIZED to 0-1000 scale. First moves the cursor to the specified position, then scrolls in the specified direction.`
 }
 
 func (t *ScrollTool) Parameters() map[string]ParameterSpec {
 	return map[string]ParameterSpec{
 		"x": {
 			Type:        "integer",
-			Description: "X coordinate to scroll at (0-1000 normalized scale)",
+			Description: "X coordinate normalized 0-1000 (0=left edge, 500=center, 1000=right edge)",
 			Required:    true,
 		},
 		"y": {
 			Type:        "integer",
-			Description: "Y coordinate to scroll at (0-1000 normalized scale)",
+			Description: "Y coordinate normalized 0-1000 (0=top edge, 500=center, 1000=bottom edge)",
 			Required:    true,
 		},
 		"direction": {
@@ -73,15 +72,7 @@ func (t *ScrollTool) Execute(ctx context.Context, argsJSON string) (string, erro
 	args.Amount = 3 // default
 
 	if err := ParseArgs(argsJSON, &args); err != nil {
-		return ErrorResponse("invalid arguments: "+err.Error(), "Provide x, y coordinates and direction"), nil
-	}
-
-	// Validate coordinates
-	if args.X < 0 || args.X > coords.NormalizedMax {
-		return ErrorResponse(fmt.Sprintf("x must be 0-%d, got %d", coords.NormalizedMax, args.X), ""), nil
-	}
-	if args.Y < 0 || args.Y > coords.NormalizedMax {
-		return ErrorResponse(fmt.Sprintf("y must be 0-%d, got %d", coords.NormalizedMax, args.Y), ""), nil
+		return ErrorResponse("invalid arguments: "+err.Error(), "Provide x, y coordinates in 0-1000 scale and direction"), nil
 	}
 
 	// Validate direction
@@ -98,6 +89,14 @@ func (t *ScrollTool) Execute(ctx context.Context, argsJSON string) (string, erro
 		args.Amount = 10
 	}
 
+	// Validate normalized coordinates
+	if args.X < 0 || args.X > 1000 {
+		return ErrorResponse("x coordinate out of range", "Use normalized 0-1000 scale"), nil
+	}
+	if args.Y < 0 || args.Y > 1000 {
+		return ErrorResponse("y coordinate out of range", "Use normalized 0-1000 scale"), nil
+	}
+
 	// Get screen info
 	screenIndex := args.ScreenIndex
 	if screenIndex == 0 && t.ScreenIndex != 0 {
@@ -105,22 +104,24 @@ func (t *ScrollTool) Execute(ctx context.Context, argsJSON string) (string, erro
 	}
 	screen := coords.GetScreen(screenIndex)
 
-	// Denormalize coordinates
-	pixel := coords.Denormalize(coords.NormalizedPoint{X: args.X, Y: args.Y}, screen)
+	// Convert normalized coordinates (0-1000) to absolute screen coordinates
+	screenX := screen.X + int(float64(args.X)/1000.0*float64(screen.Width))
+	screenY := screen.Y + int(float64(args.Y)/1000.0*float64(screen.Height))
 
 	// Move to position first
-	robotgo.Move(pixel.X, pixel.Y)
+	robotgo.Move(screenX, screenY)
 	time.Sleep(50 * time.Millisecond)
 
 	// Perform scroll
 	robotgo.ScrollDir(args.Amount, args.Direction)
 
 	return SuccessResponse(map[string]interface{}{
-		"scrolled_at_pixel": map[string]int{"x": pixel.X, "y": pixel.Y},
-		"normalized":        map[string]int{"x": args.X, "y": args.Y},
-		"direction":         args.Direction,
-		"amount":            args.Amount,
-		"screen_index":      screenIndex,
+		"scrolled_at_screen": map[string]int{"x": screenX, "y": screenY},
+		"normalized_coords":  map[string]int{"x": args.X, "y": args.Y},
+		"screen_dimensions":  map[string]int{"width": screen.Width, "height": screen.Height},
+		"direction":          args.Direction,
+		"amount":             args.Amount,
+		"screen_index":       screenIndex,
 	}), nil
 }
 

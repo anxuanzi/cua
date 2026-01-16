@@ -12,7 +12,7 @@ import (
 func main() {
 	ctx := context.Background()
 
-	fmt.Println("=== CUA Tool Test ===")
+	fmt.Println("=== CUA Tool Test (0-1000 Normalized Coordinates) ===")
 	fmt.Println("This will test each tool directly.")
 	fmt.Println("Watch your screen to verify actions are happening.")
 	fmt.Println()
@@ -74,27 +74,28 @@ func main() {
 		// The result contains JSON with screen_width, screen_height, image_width, image_height, scale_factor
 		fmt.Printf("   Metadata: %s...\n", truncateJSON(result, 300))
 	}
-	fmt.Println("\n   NOTE: screen_width/screen_height = LOGICAL dimensions (for mouse coords)")
-	fmt.Println("         image_width/image_height = actual image dimensions sent to LLM")
-	fmt.Println("         scale_factor = detected Retina scale (capture vs logical)")
 
 	// Test: Mouse movement demo - WATCH YOUR CURSOR!
-	fmt.Println("\n=== MOUSE MOVEMENT TEST ===")
+	fmt.Println("\n=== MOUSE MOVEMENT TEST (0-1000 Normalized) ===")
 	fmt.Println("Watch your cursor move to different positions!")
+	fmt.Println("Coordinates are NORMALIZED 0-1000 scale")
+	fmt.Println("  0 = left/top edge")
+	fmt.Println("  500 = center")
+	fmt.Println("  1000 = right/bottom edge")
 	fmt.Println("Starting in 2 seconds...")
 	time.Sleep(2 * time.Second)
 
 	moveTool := tools.NewMoveTool()
 
-	// Move to corners and center
+	// Move to corners and center using NORMALIZED 0-1000 coordinates
 	positions := []struct {
 		name string
 		x, y int
 	}{
-		{"TOP-LEFT (0, 0)", 50, 50},
-		{"TOP-RIGHT (1000, 0)", 950, 50},
-		{"BOTTOM-RIGHT (1000, 1000)", 950, 950},
-		{"BOTTOM-LEFT (0, 1000)", 50, 950},
+		{"TOP-LEFT (50, 50)", 50, 50},
+		{"TOP-RIGHT (950, 50)", 950, 50},
+		{"BOTTOM-RIGHT (950, 950)", 950, 950},
+		{"BOTTOM-LEFT (50, 950)", 50, 950},
 		{"CENTER (500, 500)", 500, 500},
 	}
 
@@ -170,9 +171,10 @@ func main() {
 		fmt.Printf("   Result: %s\n", result)
 	}
 
-	// Test 7: Mouse click - move first, then click
-	fmt.Println("\n7. Testing mouse_click...")
+	// Test 7: Mouse click at center using NORMALIZED coordinates
+	fmt.Println("\n7. Testing mouse_click (0-1000 normalized)...")
 	fmt.Println("   Moving cursor to center then clicking...")
+	fmt.Println("   (Using normalized coordinates: 500, 500 for center)")
 	click := tools.NewClickTool()
 	result, err = click.Execute(ctx, `{"x": 500, "y": 500}`)
 	if err != nil {

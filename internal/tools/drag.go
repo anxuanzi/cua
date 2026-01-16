@@ -2,14 +2,13 @@ package tools
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/anxuanzi/cua/internal/coords"
 	"github.com/go-vgo/robotgo"
 )
 
-// DragTool performs mouse drag operations.
+// DragTool performs mouse drag operations using normalized coordinates (0-1000 scale).
 type DragTool struct {
 	BaseTool
 	// ScreenIndex specifies which screen to use (default: 0 = primary).
@@ -26,29 +25,29 @@ func (t *DragTool) Name() string {
 }
 
 func (t *DragTool) Description() string {
-	return `Drag from one position to another. All coordinates use 0-1000 normalized scale. This performs a mouse press at the start position, moves to the end position, then releases.`
+	return `Drag from one position to another. Coordinates are NORMALIZED to 0-1000 scale. (0,0) is top-left, (1000,1000) is bottom-right. This performs a mouse press at the start position, moves to the end position, then releases.`
 }
 
 func (t *DragTool) Parameters() map[string]ParameterSpec {
 	return map[string]ParameterSpec{
 		"start_x": {
 			Type:        "integer",
-			Description: "Starting X coordinate (0-1000 normalized scale)",
+			Description: "Starting X coordinate normalized 0-1000",
 			Required:    true,
 		},
 		"start_y": {
 			Type:        "integer",
-			Description: "Starting Y coordinate (0-1000 normalized scale)",
+			Description: "Starting Y coordinate normalized 0-1000",
 			Required:    true,
 		},
 		"end_x": {
 			Type:        "integer",
-			Description: "Ending X coordinate (0-1000 normalized scale)",
+			Description: "Ending X coordinate normalized 0-1000",
 			Required:    true,
 		},
 		"end_y": {
 			Type:        "integer",
-			Description: "Ending Y coordinate (0-1000 normalized scale)",
+			Description: "Ending Y coordinate normalized 0-1000",
 			Required:    true,
 		},
 		"button": {
@@ -79,10 +78,10 @@ func (t *DragTool) Execute(ctx context.Context, argsJSON string) (string, error)
 	args.Button = "left" // default
 
 	if err := ParseArgs(argsJSON, &args); err != nil {
-		return ErrorResponse("invalid arguments: "+err.Error(), "Provide start_x, start_y, end_x, end_y coordinates (0-1000)"), nil
+		return ErrorResponse("invalid arguments: "+err.Error(), "Provide start_x, start_y, end_x, end_y coordinates in 0-1000 scale"), nil
 	}
 
-	// Validate coordinates
+	// Validate normalized coordinates
 	for _, coord := range []struct {
 		name string
 		val  int
@@ -90,8 +89,8 @@ func (t *DragTool) Execute(ctx context.Context, argsJSON string) (string, error)
 		{"start_x", args.StartX}, {"start_y", args.StartY},
 		{"end_x", args.EndX}, {"end_y", args.EndY},
 	} {
-		if coord.val < 0 || coord.val > coords.NormalizedMax {
-			return ErrorResponse(fmt.Sprintf("%s must be 0-%d, got %d", coord.name, coords.NormalizedMax, coord.val), ""), nil
+		if coord.val < 0 || coord.val > 1000 {
+			return ErrorResponse(coord.name+" coordinate out of range", "Use normalized 0-1000 scale"), nil
 		}
 	}
 
@@ -102,12 +101,14 @@ func (t *DragTool) Execute(ctx context.Context, argsJSON string) (string, error)
 	}
 	screen := coords.GetScreen(screenIndex)
 
-	// Denormalize coordinates
-	startPixel := coords.Denormalize(coords.NormalizedPoint{X: args.StartX, Y: args.StartY}, screen)
-	endPixel := coords.Denormalize(coords.NormalizedPoint{X: args.EndX, Y: args.EndY}, screen)
+	// Convert normalized coordinates (0-1000) to absolute screen coordinates
+	startScreenX := screen.X + int(float64(args.StartX)/1000.0*float64(screen.Width))
+	startScreenY := screen.Y + int(float64(args.StartY)/1000.0*float64(screen.Height))
+	endScreenX := screen.X + int(float64(args.EndX)/1000.0*float64(screen.Width))
+	endScreenY := screen.Y + int(float64(args.EndY)/1000.0*float64(screen.Height))
 
 	// Perform drag: move to start, press, move to end, release
-	robotgo.Move(startPixel.X, startPixel.Y)
+	robotgo.Move(startScreenX, startScreenY)
 	time.Sleep(50 * time.Millisecond)
 
 	robotgo.Toggle(args.Button, "down")
@@ -116,8 +117,8 @@ func (t *DragTool) Execute(ctx context.Context, argsJSON string) (string, error)
 	// Smooth drag with intermediate steps for better reliability
 	steps := 10
 	for i := 1; i <= steps; i++ {
-		x := startPixel.X + (endPixel.X-startPixel.X)*i/steps
-		y := startPixel.Y + (endPixel.Y-startPixel.Y)*i/steps
+		x := startScreenX + (endScreenX-startScreenX)*i/steps
+		y := startScreenY + (endScreenY-startScreenY)*i/steps
 		robotgo.Move(x, y)
 		time.Sleep(10 * time.Millisecond)
 	}
@@ -126,12 +127,13 @@ func (t *DragTool) Execute(ctx context.Context, argsJSON string) (string, error)
 	robotgo.Toggle(args.Button, "up")
 
 	return SuccessResponse(map[string]interface{}{
-		"dragged_from_pixel": map[string]int{"x": startPixel.X, "y": startPixel.Y},
-		"dragged_to_pixel":   map[string]int{"x": endPixel.X, "y": endPixel.Y},
-		"normalized_from":    map[string]int{"x": args.StartX, "y": args.StartY},
-		"normalized_to":      map[string]int{"x": args.EndX, "y": args.EndY},
-		"button":             args.Button,
-		"screen_index":       screenIndex,
+		"dragged_from_screen":    map[string]int{"x": startScreenX, "y": startScreenY},
+		"dragged_to_screen":      map[string]int{"x": endScreenX, "y": endScreenY},
+		"normalized_coords_from": map[string]int{"x": args.StartX, "y": args.StartY},
+		"normalized_coords_to":   map[string]int{"x": args.EndX, "y": args.EndY},
+		"screen_dimensions":      map[string]int{"width": screen.Width, "height": screen.Height},
+		"button":                 args.Button,
+		"screen_index":           screenIndex,
 	}), nil
 }
 
