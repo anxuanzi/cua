@@ -70,6 +70,9 @@ func (t *ScreenshotTool) Execute(ctx context.Context, argsJSON string) (string, 
 		screenIndex = t.ScreenIndex
 	}
 
+	// Get screen info first - we need logical dimensions for coordinate system
+	screen := coords.GetScreen(screenIndex)
+
 	// Set display for capture
 	oldDisplayID := robotgo.DisplayID
 	robotgo.DisplayID = screenIndex
@@ -84,13 +87,20 @@ func (t *ScreenshotTool) Execute(ctx context.Context, argsJSON string) (string, 
 		return ErrorResponse("failed to capture screenshot: nil image", "Ensure screen permissions are granted"), nil
 	}
 
-	// Get original dimensions
+	// Get physical capture dimensions
 	bounds := img.Bounds()
-	origW := bounds.Dx()
-	origH := bounds.Dy()
+	captureW := bounds.Dx()
 
-	// Calculate scaled dimensions preserving aspect ratio
-	newW, newH := calculateScaledDimensions(origW, origH, MaxScreenshotWidth, MaxScreenshotHeight)
+	// Calculate actual scale factor from capture vs logical dimensions
+	// On Retina displays, capture is typically 2x the logical resolution
+	actualScaleFactor := float64(captureW) / float64(screen.Width)
+	if actualScaleFactor < 1.0 {
+		actualScaleFactor = 1.0
+	}
+
+	// Calculate scaled dimensions for LLM using LOGICAL dimensions as reference
+	// This ensures the aspect ratio matches the coordinate system the LLM should use
+	newW, newH := calculateScaledDimensions(screen.Width, screen.Height, MaxScreenshotWidth, MaxScreenshotHeight)
 
 	// Resize using high-quality CatmullRom scaling
 	resized := image.NewRGBA(image.Rect(0, 0, newW, newH))
@@ -105,18 +115,22 @@ func (t *ScreenshotTool) Execute(ctx context.Context, argsJSON string) (string, 
 	// Base64 encode
 	b64 := base64.StdEncoding.EncodeToString(buf.Bytes())
 
-	// Get screen info for additional context
-	screen := coords.GetScreen(screenIndex)
-
+	// Report LOGICAL dimensions (what the coordinate system uses)
+	// This ensures consistency with screen_info and the normalized coordinate system
+	// The LLM should think of the image as representing a screen of logical dimensions
 	result := map[string]interface{}{
-		"image_base64":    b64,
-		"original_width":  origW,
-		"original_height": origH,
-		"scaled_width":    newW,
-		"scaled_height":   newH,
-		"screen_index":    screenIndex,
-		"screen_x":        screen.X,
-		"screen_y":        screen.Y,
+		"image_base64": b64,
+		// Report logical screen dimensions - these match the coordinate system
+		"screen_width":  screen.Width,
+		"screen_height": screen.Height,
+		// Report the actual image dimensions sent to the LLM
+		"image_width":  newW,
+		"image_height": newH,
+		// Include scale factor for debugging/information
+		"scale_factor": actualScaleFactor,
+		"screen_index": screenIndex,
+		"screen_x":     screen.X,
+		"screen_y":     screen.Y,
 	}
 
 	resultJSON, _ := json.Marshal(result)

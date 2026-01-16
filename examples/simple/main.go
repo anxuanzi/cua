@@ -89,11 +89,13 @@ func main() {
 	// Parse and show metadata (not the full base64 image)
 	var screenshotResult map[string]interface{}
 	json.Unmarshal([]byte(result), &screenshotResult)
-	fmt.Printf("   Original: %v x %v\n", screenshotResult["original_width"], screenshotResult["original_height"])
-	fmt.Printf("   Scaled:   %v x %v\n", screenshotResult["scaled_width"], screenshotResult["scaled_height"])
+	fmt.Printf("   Screen (logical): %v x %v\n", screenshotResult["screen_width"], screenshotResult["screen_height"])
+	fmt.Printf("   Image (to LLM):   %v x %v\n", screenshotResult["image_width"], screenshotResult["image_height"])
+	fmt.Printf("   Retina scale:     %v\n", screenshotResult["scale_factor"])
 	if b64, ok := screenshotResult["image_base64"].(string); ok {
-		fmt.Printf("   Base64:   %d characters\n", len(b64))
+		fmt.Printf("   Base64:           %d characters\n", len(b64))
 	}
+	fmt.Println("   (Screen dimensions now match screen_info for consistent coordinates)")
 
 	// Example 3: List available tools
 	fmt.Println("\n3. Available Tools:")
@@ -113,7 +115,7 @@ func main() {
 		fmt.Println("(This will use Gemini to automate the Calculator app)")
 		fmt.Println()
 
-		task := "Open the Calculator app (use Spotlight with cmd+space, type 'Calculator', press enter). Then calculate 123 * 456 and tell me the result."
+		task := "Open Calculator and compute 123 * 456. Tell me the result."
 
 		var result string
 		var err error
@@ -142,11 +144,6 @@ func main() {
 	fmt.Println("\n=== Token Usage Statistics ===")
 	usage := agent.Usage()
 	fmt.Printf("Total Runs:         %d\n", usage.TotalRuns)
-	fmt.Printf("Total LLM Calls:    %d\n", usage.TotalLLMCalls)
-	fmt.Printf("Total Tool Calls:   %d\n", usage.TotalToolCalls)
-	fmt.Printf("Total Input Tokens: %d\n", usage.TotalInputTokens)
-	fmt.Printf("Total Output Tokens:%d\n", usage.TotalOutputTokens)
-	fmt.Printf("Total Tokens:       %d\n", usage.TotalTokens)
 	fmt.Printf("Execution Time:     %dms\n", usage.TotalTimeMs)
 
 	// Show percentage of limit used

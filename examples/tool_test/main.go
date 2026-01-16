@@ -50,16 +50,33 @@ func main() {
 	fmt.Println("   Did Calculator open? (This bypasses Spotlight entirely!)")
 	time.Sleep(2 * time.Second)
 
+	// Test: Screen info
+	fmt.Println("\n=== SCREEN INFO TEST ===")
+	fmt.Println("Getting screen dimensions...")
+	screenInfo := tools.NewScreenInfoTool()
+	result, err = screenInfo.Execute(ctx, `{"screen_index": 0}`)
+	if err != nil {
+		fmt.Printf("   ERROR: %v\n", err)
+	} else {
+		fmt.Printf("   Screen info: %s\n", result)
+	}
+
 	// Test 1: Screen capture (should work if permissions are OK)
 	fmt.Println("\n=== SCREEN CAPTURE TEST ===")
-	fmt.Println("1. Testing screen_capture...")
+	fmt.Println("Testing screen_capture...")
 	screenshot := tools.NewScreenshotTool()
 	result, err = screenshot.Execute(ctx, `{}`)
 	if err != nil {
 		fmt.Printf("   ERROR: %v\n", err)
 	} else {
-		fmt.Printf("   OK - got %d chars of base64\n", len(result))
+		// Parse and display key info (not full base64)
+		fmt.Printf("   OK - Screenshot captured\n")
+		// The result contains JSON with screen_width, screen_height, image_width, image_height, scale_factor
+		fmt.Printf("   Metadata: %s...\n", truncateJSON(result, 300))
 	}
+	fmt.Println("\n   NOTE: screen_width/screen_height = LOGICAL dimensions (for mouse coords)")
+	fmt.Println("         image_width/image_height = actual image dimensions sent to LLM")
+	fmt.Println("         scale_factor = detected Retina scale (capture vs logical)")
 
 	// Test: Mouse movement demo - WATCH YOUR CURSOR!
 	fmt.Println("\n=== MOUSE MOVEMENT TEST ===")
@@ -177,4 +194,42 @@ func main() {
 	fmt.Println("If typing didn't work: Also check Input Monitoring permissions")
 	fmt.Println()
 	fmt.Println("Your terminal/IDE needs BOTH Accessibility AND Input Monitoring permissions!")
+}
+
+// truncateJSON truncates a JSON string, removing large base64 data
+func truncateJSON(s string, maxLen int) string {
+	// Remove the image_base64 field content to show just the metadata
+	// Find "image_base64":"..." and replace with "image_base64":"[truncated]"
+	start := 0
+	for {
+		idx := indexOfString(s[start:], `"image_base64":"`)
+		if idx == -1 {
+			break
+		}
+		idx += start + len(`"image_base64":"`)
+		// Find the closing quote
+		end := idx
+		for end < len(s) && s[end] != '"' {
+			if s[end] == '\\' && end+1 < len(s) {
+				end++ // Skip escaped char
+			}
+			end++
+		}
+		s = s[:idx] + "[base64 data truncated]" + s[end:]
+		start = idx + len("[base64 data truncated]")
+	}
+
+	if len(s) > maxLen {
+		return s[:maxLen]
+	}
+	return s
+}
+
+func indexOfString(s, substr string) int {
+	for i := 0; i+len(substr) <= len(s); i++ {
+		if s[i:i+len(substr)] == substr {
+			return i
+		}
+	}
+	return -1
 }
