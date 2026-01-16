@@ -21,6 +21,7 @@ package cua
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"runtime"
 	"time"
 
@@ -32,6 +33,7 @@ import (
 	"github.com/Ingenimax/agent-sdk-go/pkg/memory"
 	"github.com/Ingenimax/agent-sdk-go/pkg/multitenancy"
 	"github.com/google/uuid"
+	"google.golang.org/genai"
 
 	"github.com/anxuanzi/cua/internal/coords"
 	"github.com/anxuanzi/cua/internal/tools"
@@ -44,6 +46,7 @@ type CUA struct {
 	agent        *agent.Agent
 	tools        []interfaces.Tool
 	systemPrompt string
+	usageStats   *UsageStats
 }
 
 // New creates a new CUA instance with the given options.
@@ -68,32 +71,53 @@ func New(opts ...Option) (*CUA, error) {
 		if model == "" {
 			model = "claude-sonnet-4-20250514"
 		}
-		llmClient = anthropic.NewClient(
-			cfg.APIKey,
+		anthropicOpts := []anthropic.Option{
 			anthropic.WithModel(model),
-		)
+		}
+		if cfg.BaseURL != "" {
+			anthropicOpts = append(anthropicOpts, anthropic.WithBaseURL(cfg.BaseURL))
+		}
+		llmClient = anthropic.NewClient(cfg.APIKey, anthropicOpts...)
+
 	case ProviderOpenAI:
 		model := cfg.Model
 		if model == "" {
 			model = "gpt-4o"
 		}
-		llmClient = openai.NewClient(
-			cfg.APIKey,
+		openaiOpts := []openai.Option{
 			openai.WithModel(model),
-		)
+		}
+		if cfg.BaseURL != "" {
+			openaiOpts = append(openaiOpts, openai.WithBaseURL(cfg.BaseURL))
+		}
+		llmClient = openai.NewClient(cfg.APIKey, openaiOpts...)
+
 	case ProviderGemini:
 		model := cfg.Model
 		if model == "" {
 			model = "gemini-2.5-flash"
 		}
-		llmClient, err = gemini.NewClient(
-			context.Background(),
+
+		geminiOpts := []gemini.Option{
 			gemini.WithAPIKey(cfg.APIKey),
 			gemini.WithModel(model),
-		)
+		}
+
+		// For Gemini, if a custom base URL is provided, we need to create
+		// a custom genai.Client and inject it
+		if cfg.BaseURL != "" {
+			genaiClient, clientErr := createCustomGeminiClient(cfg.APIKey, cfg.BaseURL)
+			if clientErr != nil {
+				return nil, fmt.Errorf("failed to create custom Gemini client: %w", clientErr)
+			}
+			geminiOpts = append(geminiOpts, gemini.WithClient(genaiClient))
+		}
+
+		llmClient, err = gemini.NewClient(context.Background(), geminiOpts...)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create Gemini client: %w", err)
 		}
+
 	default:
 		return nil, fmt.Errorf("unsupported provider: %s", cfg.Provider)
 	}
@@ -138,7 +162,22 @@ func New(opts ...Option) (*CUA, error) {
 		agent:        ag,
 		tools:        toolList,
 		systemPrompt: sysPrompt,
+		usageStats:   &UsageStats{},
 	}, nil
+}
+
+// createCustomGeminiClient creates a genai.Client with a custom base URL.
+// This is needed because the agent-sdk-go Gemini client doesn't expose HTTPOptions.
+func createCustomGeminiClient(apiKey, baseURL string) (*genai.Client, error) {
+	config := &genai.ClientConfig{
+		APIKey:  apiKey,
+		Backend: genai.BackendGeminiAPI,
+		HTTPOptions: genai.HTTPOptions{
+			BaseURL: baseURL,
+		},
+		HTTPClient: &http.Client{},
+	}
+	return genai.NewClient(context.Background(), config)
 }
 
 // createTools initializes all CUA tools.
@@ -192,15 +231,64 @@ func (c *CUA) prepareContext(ctx context.Context) context.Context {
 
 // Run executes a task and returns the final result.
 // This delegates to agent-sdk-go's agent which handles the ReAct loop.
+// Token usage is tracked and can be retrieved via Usage() method.
 func (c *CUA) Run(ctx context.Context, task string) (string, error) {
-	ctx = c.prepareContext(ctx)
-	return c.agent.Run(ctx, task)
+	resp, err := c.RunDetailed(ctx, task)
+	if err != nil {
+		return "", err
+	}
+	return resp.Content, nil
 }
 
 // RunDetailed executes a task and returns detailed response including token usage.
+// Token usage is automatically tracked in cumulative statistics.
 func (c *CUA) RunDetailed(ctx context.Context, task string) (*interfaces.AgentResponse, error) {
 	ctx = c.prepareContext(ctx)
-	return c.agent.RunDetailed(ctx, task)
+	resp, err := c.agent.RunDetailed(ctx, task)
+	if err != nil {
+		return nil, err
+	}
+
+	// Track token usage
+	var usage *TokenUsage
+	if resp.Usage != nil {
+		usage = &TokenUsage{
+			InputTokens:     resp.Usage.InputTokens,
+			OutputTokens:    resp.Usage.OutputTokens,
+			TotalTokens:     resp.Usage.TotalTokens,
+			ReasoningTokens: resp.Usage.ReasoningTokens,
+		}
+	}
+
+	llmCalls := resp.ExecutionSummary.LLMCalls
+	toolCalls := resp.ExecutionSummary.ToolCalls
+	timeMs := resp.ExecutionSummary.ExecutionTimeMs
+
+	c.usageStats.Add(usage, llmCalls, toolCalls, timeMs)
+
+	// Check token limit and trigger warning if needed
+	c.checkTokenLimit()
+
+	return resp, nil
+}
+
+// checkTokenLimit checks if token usage is approaching the limit and triggers callback.
+func (c *CUA) checkTokenLimit() {
+	if c.config.TokenLimit <= 0 || c.config.OnTokenLimitWarning == nil {
+		return
+	}
+
+	threshold := c.config.TokenLimitWarningThreshold
+	if threshold <= 0 {
+		threshold = 80 // Default 80%
+	}
+
+	stats := c.usageStats.Get()
+	percentUsed := float64(stats.TotalInputTokens) / float64(c.config.TokenLimit) * 100
+
+	if percentUsed >= float64(threshold) {
+		c.config.OnTokenLimitWarning(stats.TotalInputTokens, c.config.TokenLimit, percentUsed)
+	}
 }
 
 // RunEvent represents an event during streaming execution.
@@ -343,6 +431,34 @@ func (c *CUA) Agent() *agent.Agent {
 // SystemPrompt returns the system prompt for the CUA agent.
 func (c *CUA) SystemPrompt() string {
 	return c.systemPrompt
+}
+
+// Usage returns the cumulative token usage statistics.
+// This includes all tokens used across all Run and RunDetailed calls.
+func (c *CUA) Usage() UsageStats {
+	return c.usageStats.Get()
+}
+
+// ResetUsage resets the cumulative token usage statistics to zero.
+// This is useful when starting a new session or tracking usage over a specific period.
+func (c *CUA) ResetUsage() {
+	c.usageStats.Reset()
+}
+
+// LastRunUsage returns the token usage from the most recent run.
+// For more detailed tracking, use RunDetailed which returns full execution details.
+func (c *CUA) LastRunUsage() *TokenUsage {
+	stats := c.usageStats.Get()
+	if stats.TotalRuns == 0 {
+		return nil
+	}
+	// Note: This returns cumulative stats. For per-run tracking, use RunDetailed.
+	return &TokenUsage{
+		InputTokens:     stats.TotalInputTokens,
+		OutputTokens:    stats.TotalOutputTokens,
+		TotalTokens:     stats.TotalTokens,
+		ReasoningTokens: stats.TotalReasoningTokens,
+	}
 }
 
 // ToolDefinitions returns JSON-compatible tool definitions for external LLM integration.

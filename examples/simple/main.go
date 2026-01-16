@@ -1,11 +1,14 @@
 // Simple example demonstrating basic CUA usage.
 //
 // This example shows how to:
-// 1. Create a CUA instance
+// 1. Create a CUA instance with token limit monitoring
 // 2. Execute individual tools directly
 // 3. Run a full task with the LLM-powered Run method
+// 4. Track token usage across multiple runs
 //
 // Run with: GEMINI_API_KEY=your-key go run main.go
+//
+// Optional: Set GOOGLE_GEMINI_BASE_URL to use a custom API endpoint
 package main
 
 import (
@@ -27,12 +30,31 @@ func main() {
 		fmt.Println()
 	}
 
-	// Create CUA instance
-	agent, err := cua.New(
+	// Optional: Custom API endpoint
+	baseURL := os.Getenv("GOOGLE_GEMINI_BASE_URL")
+
+	// Create CUA instance with token limit monitoring
+	// Gemini Tier 1 has a limit of 1,000,000 input tokens per minute
+	opts := []cua.Option{
 		cua.WithAPIKey(apiKey),
 		cua.WithProvider(cua.ProviderGemini),
 		cua.WithScreenIndex(0), // Primary screen
-	)
+		// Set token limit to 900K to leave some buffer (Gemini tier 1 is 1M/min)
+		cua.WithTokenLimit(900000),
+		// Warn at 80% usage (720K tokens)
+		cua.WithTokenLimitWarning(80, func(current, limit int, percentUsed float64) {
+			fmt.Printf("\n⚠️  Token Usage Warning: %d/%d tokens (%.1f%%)\n", current, limit, percentUsed)
+			fmt.Println("Consider waiting before next request to avoid rate limits.")
+		}),
+	}
+
+	// Add custom base URL if provided
+	if baseURL != "" {
+		fmt.Printf("Using custom API endpoint: %s\n\n", baseURL)
+		opts = append(opts, cua.WithBaseURL(baseURL))
+	}
+
+	agent, err := cua.New(opts...)
 	if err != nil {
 		log.Fatalf("Failed to create CUA: %v", err)
 	}
@@ -91,6 +113,23 @@ func main() {
 		} else {
 			fmt.Println("Result:")
 			fmt.Println(result)
+		}
+
+		// === Token Usage Statistics ===
+		fmt.Println("\n=== Token Usage Statistics ===")
+		usage := agent.Usage()
+		fmt.Printf("Total Runs:         %d\n", usage.TotalRuns)
+		fmt.Printf("Total LLM Calls:    %d\n", usage.TotalLLMCalls)
+		fmt.Printf("Total Tool Calls:   %d\n", usage.TotalToolCalls)
+		fmt.Printf("Total Input Tokens: %d\n", usage.TotalInputTokens)
+		fmt.Printf("Total Output Tokens:%d\n", usage.TotalOutputTokens)
+		fmt.Printf("Total Tokens:       %d\n", usage.TotalTokens)
+		fmt.Printf("Execution Time:     %dms\n", usage.TotalTimeMs)
+
+		// Show percentage of limit used
+		if usage.TotalInputTokens > 0 {
+			percentUsed := float64(usage.TotalInputTokens) / 900000 * 100
+			fmt.Printf("Rate Limit Usage:   %.2f%% of 900K limit\n", percentUsed)
 		}
 	}
 

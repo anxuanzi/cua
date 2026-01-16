@@ -7,6 +7,7 @@ require (
 	github.com/go-vgo/robotgo v0.110.8
 	github.com/google/uuid v1.6.0
 	golang.org/x/image v0.27.0
+	google.golang.org/genai v1.30.0
 )
 
 require (
@@ -81,7 +82,6 @@ require (
 	golang.org/x/oauth2 v0.30.0 // indirect
 	golang.org/x/sys v0.35.0 // indirect
 	golang.org/x/text v0.28.0 // indirect
-	google.golang.org/genai v1.30.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20250825161204-c5933d9347a5 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250825161204-c5933d9347a5 // indirect
 	google.golang.org/grpc v1.75.0 // indirect
