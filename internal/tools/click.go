@@ -98,11 +98,11 @@ func (t *ClickTool) Execute(ctx context.Context, argsJSON string) (string, error
 		screen,
 	)
 
-	// Move to position
+	// Move to position with human-like timing
 	robotgo.Move(pixel.X, pixel.Y)
 
-	// Small delay to ensure mouse is in position
-	time.Sleep(50 * time.Millisecond)
+	// Human-like delay after moving (150-200ms feels natural)
+	time.Sleep(150 * time.Millisecond)
 
 	// Perform click
 	if args.Double {
@@ -110,6 +110,9 @@ func (t *ClickTool) Execute(ctx context.Context, argsJSON string) (string, error
 	} else {
 		robotgo.Click(args.Button)
 	}
+
+	// Delay after clicking to let UI respond
+	time.Sleep(100 * time.Millisecond)
 
 	return SuccessResponse(map[string]interface{}{
 		"clicked_at_pixel": map[string]int{"x": pixel.X, "y": pixel.Y},

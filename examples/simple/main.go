@@ -115,7 +115,7 @@ func main() {
 		fmt.Println("(This will use Gemini to automate the Calculator app)")
 		fmt.Println()
 
-		task := "Open Calculator and compute 123 * 456. Tell me the result."
+		task := "Open Calculator and compute 123 * 456. Tell me the result. You must click, not type."
 
 		var result string
 		var err error

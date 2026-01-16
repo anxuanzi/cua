@@ -31,9 +31,9 @@ func (t *TypeTool) Parameters() map[string]ParameterSpec {
 		},
 		"delay_ms": {
 			Type:        "integer",
-			Description: "Delay between characters in milliseconds (default: 10 for reliability)",
+			Description: "Delay between characters in milliseconds (default: 50 for human-like typing)",
 			Required:    false,
-			Default:     10,
+			Default:     50,
 		},
 	}
 }
@@ -52,10 +52,10 @@ func (t *TypeTool) Execute(ctx context.Context, argsJSON string) (string, error)
 		return ErrorResponse("text cannot be empty", "Provide the text to type"), nil
 	}
 
-	// Default delay if not specified (10ms for reliability)
+	// Default delay if not specified (50ms for human-like typing)
 	charDelay := args.DelayMs
 	if charDelay == 0 {
-		charDelay = 10
+		charDelay = 50
 	}
 
 	// Platform-specific typing implementation

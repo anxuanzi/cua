@@ -79,21 +79,24 @@ func (t *KeyPressTool) Execute(ctx context.Context, argsJSON string) (string, er
 		}
 	}
 
-	// Small delay before key press
-	time.Sleep(100 * time.Millisecond)
+	// Human-like delay before key press
+	time.Sleep(150 * time.Millisecond)
 
 	// Press the key
 	if args.HoldMs > 0 {
 		// Hold the key - press modifiers first, then main key
 		for _, mod := range modifiers {
 			robotgo.KeyToggle(mod, "down")
+			time.Sleep(30 * time.Millisecond) // Small delay between modifier presses
 		}
 		robotgo.KeyToggle(key, "down")
 		time.Sleep(time.Duration(args.HoldMs) * time.Millisecond)
 		robotgo.KeyToggle(key, "up")
+		time.Sleep(30 * time.Millisecond)
 		// Release modifiers in reverse order
 		for i := len(modifiers) - 1; i >= 0; i-- {
 			robotgo.KeyToggle(modifiers[i], "up")
+			time.Sleep(30 * time.Millisecond)
 		}
 	} else {
 		// Quick tap with modifiers
@@ -104,9 +107,12 @@ func (t *KeyPressTool) Execute(ctx context.Context, argsJSON string) (string, er
 		}
 	}
 
-	// Extra delay after modifier combos (Spotlight, app launchers need time)
+	// Human-like delay after key press
+	// Longer for modifier combos (Spotlight, app launchers need time to respond)
 	if len(modifiers) > 0 {
-		time.Sleep(300 * time.Millisecond)
+		time.Sleep(400 * time.Millisecond)
+	} else {
+		time.Sleep(100 * time.Millisecond)
 	}
 
 	return SuccessResponse(map[string]interface{}{
