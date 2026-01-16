@@ -6,7 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"image"
-	"image/png"
+	"image/jpeg"
 
 	"github.com/anxuanzi/cua/internal/coords"
 	"github.com/go-vgo/robotgo"
@@ -15,9 +15,14 @@ import (
 
 const (
 	// MaxScreenshotWidth is the maximum width for screenshots sent to the model.
+	// 720p provides good balance between detail and token efficiency.
 	MaxScreenshotWidth = 1280
 	// MaxScreenshotHeight is the maximum height for screenshots sent to the model.
-	MaxScreenshotHeight = 800
+	MaxScreenshotHeight = 720
+	// DefaultJPEGQuality is the default JPEG compression quality (0-100).
+	// Lower values = smaller files = fewer tokens, but less detail.
+	// 60-70 provides good balance for UI recognition.
+	DefaultJPEGQuality = 65
 )
 
 // ScreenshotTool captures screenshots of the screen.
@@ -37,7 +42,7 @@ func (t *ScreenshotTool) Name() string {
 }
 
 func (t *ScreenshotTool) Description() string {
-	return `Capture a screenshot of the current screen. Returns a base64-encoded PNG image along with screen dimensions. Use this tool frequently to understand the current state before taking actions. The screenshot is resized to fit within 1280x800 while preserving aspect ratio for efficient processing.`
+	return `Capture a screenshot of the current screen. Returns a base64-encoded JPEG image along with screen dimensions. Use this to see the current state before taking actions. The screenshot is resized to 720p and compressed for efficient processing.`
 }
 
 func (t *ScreenshotTool) Parameters() map[string]ParameterSpec {
@@ -91,9 +96,9 @@ func (t *ScreenshotTool) Execute(ctx context.Context, argsJSON string) (string, 
 	resized := image.NewRGBA(image.Rect(0, 0, newW, newH))
 	draw.CatmullRom.Scale(resized, resized.Bounds(), img, bounds, draw.Over, nil)
 
-	// Encode to PNG
+	// Encode to JPEG with compression for token efficiency
 	var buf bytes.Buffer
-	if err := png.Encode(&buf, resized); err != nil {
+	if err := jpeg.Encode(&buf, resized, &jpeg.Options{Quality: DefaultJPEGQuality}); err != nil {
 		return ErrorResponse("failed to encode screenshot: "+err.Error(), ""), nil
 	}
 

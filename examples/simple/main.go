@@ -4,11 +4,17 @@
 // 1. Create a CUA instance with token limit monitoring
 // 2. Execute individual tools directly
 // 3. Run a full task with the LLM-powered Run method
-// 4. Track token usage across multiple runs
+// 4. Track token usage across multiple runs (including failed runs)
 //
 // Run with: GEMINI_API_KEY=your-key go run main.go
 //
-// Optional: Set GOOGLE_GEMINI_BASE_URL to use a custom API endpoint
+// Optional:
+//   - Set GOOGLE_GEMINI_BASE_URL to use a custom API endpoint
+//   - Set USE_STREAMING=1 to use RunStreamWithTracking for better failure tracking
+//
+// NOTE: Token counts require agent-sdk-go to return usage data. On some failures
+// (like context limit exceeded), the SDK may not return usage info. In this case,
+// use RunStreamWithTracking which tracks tool calls and execution time from events.
 package main
 
 import (
@@ -107,30 +113,50 @@ func main() {
 		fmt.Println("(This will use Gemini to automate the Calculator app)")
 		fmt.Println()
 
-		result, err := agent.Run(ctx, "Open the Calculator app (use Spotlight with cmd+space, type 'Calculator', press enter). Then calculate 123 * 456 and tell me the result.")
+		task := "Open the Calculator app (use Spotlight with cmd+space, type 'Calculator', press enter). Then calculate 123 * 456 and tell me the result."
+
+		var result string
+		var err error
+
+		// Use streaming mode if requested - this provides better tracking on failures
+		// because we can count tool calls and LLM iterations from events
+		if os.Getenv("USE_STREAMING") != "" {
+			fmt.Println("Using RunStreamWithTracking for better failure tracking...")
+			result, err = agent.RunStreamWithTracking(ctx, task)
+		} else {
+			result, err = agent.Run(ctx, task)
+		}
+
 		if err != nil {
-			log.Printf("Task failed: %v", err)
+			fmt.Printf("Task failed: %v\n", err)
+			fmt.Println("(Tool calls and execution time are still tracked)")
 		} else {
 			fmt.Println("Result:")
 			fmt.Println(result)
 		}
+	}
 
-		// === Token Usage Statistics ===
-		fmt.Println("\n=== Token Usage Statistics ===")
-		usage := agent.Usage()
-		fmt.Printf("Total Runs:         %d\n", usage.TotalRuns)
-		fmt.Printf("Total LLM Calls:    %d\n", usage.TotalLLMCalls)
-		fmt.Printf("Total Tool Calls:   %d\n", usage.TotalToolCalls)
-		fmt.Printf("Total Input Tokens: %d\n", usage.TotalInputTokens)
-		fmt.Printf("Total Output Tokens:%d\n", usage.TotalOutputTokens)
-		fmt.Printf("Total Tokens:       %d\n", usage.TotalTokens)
-		fmt.Printf("Execution Time:     %dms\n", usage.TotalTimeMs)
+	// === Token Usage Statistics ===
+	// NOTE: Usage is tracked even when tasks fail, so you can monitor
+	// token consumption that led to failures (e.g., context limit exceeded)
+	fmt.Println("\n=== Token Usage Statistics ===")
+	usage := agent.Usage()
+	fmt.Printf("Total Runs:         %d\n", usage.TotalRuns)
+	fmt.Printf("Total LLM Calls:    %d\n", usage.TotalLLMCalls)
+	fmt.Printf("Total Tool Calls:   %d\n", usage.TotalToolCalls)
+	fmt.Printf("Total Input Tokens: %d\n", usage.TotalInputTokens)
+	fmt.Printf("Total Output Tokens:%d\n", usage.TotalOutputTokens)
+	fmt.Printf("Total Tokens:       %d\n", usage.TotalTokens)
+	fmt.Printf("Execution Time:     %dms\n", usage.TotalTimeMs)
 
-		// Show percentage of limit used
-		if usage.TotalInputTokens > 0 {
-			percentUsed := float64(usage.TotalInputTokens) / 900000 * 100
-			fmt.Printf("Rate Limit Usage:   %.2f%% of 900K limit\n", percentUsed)
-		}
+	// Show percentage of limit used
+	if usage.TotalInputTokens > 0 {
+		percentUsed := float64(usage.TotalInputTokens) / 900000 * 100
+		fmt.Printf("Rate Limit Usage:   %.2f%% of 900K limit\n", percentUsed)
+	} else if usage.TotalRuns > 0 {
+		// Token count may be 0 if agent-sdk-go doesn't return usage data
+		fmt.Println("Note: Token count unavailable (agent-sdk-go may not provide this data)")
+		fmt.Println("      Execution time is still tracked for rate limiting purposes.")
 	}
 
 	fmt.Println("\n=== Done! ===")

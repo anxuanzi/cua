@@ -232,9 +232,15 @@ func (c *CUA) prepareContext(ctx context.Context) context.Context {
 // Run executes a task and returns the final result.
 // This delegates to agent-sdk-go's agent which handles the ReAct loop.
 // Token usage is tracked and can be retrieved via Usage() method.
+// NOTE: Even if Run returns an error, token usage is still tracked. Call Usage()
+// after an error to see how many tokens were consumed before the failure.
 func (c *CUA) Run(ctx context.Context, task string) (string, error) {
 	resp, err := c.RunDetailed(ctx, task)
 	if err != nil {
+		// Return any partial content if available
+		if resp != nil && resp.Content != "" {
+			return resp.Content, err
+		}
 		return "", err
 	}
 	return resp.Content, nil
@@ -242,32 +248,50 @@ func (c *CUA) Run(ctx context.Context, task string) (string, error) {
 
 // RunDetailed executes a task and returns detailed response including token usage.
 // Token usage is automatically tracked in cumulative statistics.
+// IMPORTANT: Usage is tracked even when the task fails with an error, so you can
+// monitor token consumption that led to failures (e.g., exceeding context limits).
 func (c *CUA) RunDetailed(ctx context.Context, task string) (*interfaces.AgentResponse, error) {
 	ctx = c.prepareContext(ctx)
-	resp, err := c.agent.RunDetailed(ctx, task)
-	if err != nil {
-		return nil, err
-	}
+	startTime := time.Now()
 
-	// Track token usage
+	resp, err := c.agent.RunDetailed(ctx, task)
+
+	// Calculate execution time regardless of success/failure
+	elapsedMs := time.Since(startTime).Milliseconds()
+
+	// Track usage even on error - we want to know what was consumed
 	var usage *TokenUsage
-	if resp.Usage != nil {
-		usage = &TokenUsage{
-			InputTokens:     resp.Usage.InputTokens,
-			OutputTokens:    resp.Usage.OutputTokens,
-			TotalTokens:     resp.Usage.TotalTokens,
-			ReasoningTokens: resp.Usage.ReasoningTokens,
+	var llmCalls, toolCalls int
+	var timeMs int64 = elapsedMs
+
+	if resp != nil {
+		// Response available - extract full details
+		if resp.Usage != nil {
+			usage = &TokenUsage{
+				InputTokens:     resp.Usage.InputTokens,
+				OutputTokens:    resp.Usage.OutputTokens,
+				TotalTokens:     resp.Usage.TotalTokens,
+				ReasoningTokens: resp.Usage.ReasoningTokens,
+			}
+		}
+		// ExecutionSummary is a struct (not pointer), so always accessible
+		llmCalls = resp.ExecutionSummary.LLMCalls
+		toolCalls = resp.ExecutionSummary.ToolCalls
+		// Use reported time if available, otherwise use our measured time
+		if resp.ExecutionSummary.ExecutionTimeMs > 0 {
+			timeMs = resp.ExecutionSummary.ExecutionTimeMs
 		}
 	}
 
-	llmCalls := resp.ExecutionSummary.LLMCalls
-	toolCalls := resp.ExecutionSummary.ToolCalls
-	timeMs := resp.ExecutionSummary.ExecutionTimeMs
-
+	// Always track the run, even if usage details are unavailable
 	c.usageStats.Add(usage, llmCalls, toolCalls, timeMs)
 
 	// Check token limit and trigger warning if needed
 	c.checkTokenLimit()
+
+	if err != nil {
+		return resp, err
+	}
 
 	return resp, nil
 }
@@ -322,6 +346,8 @@ const (
 
 // RunStream executes a task and streams events back.
 // This provides visibility into the ReAct loop: Thought → Action → Observation
+// NOTE: Unlike RunDetailed, streaming doesn't provide token usage per event.
+// However, tool calls and LLM iterations can be counted from the events.
 func (c *CUA) RunStream(ctx context.Context, task string) (<-chan RunEvent, error) {
 	// Prepare context with org ID and conversation ID
 	ctx = c.prepareContext(ctx)
@@ -392,6 +418,53 @@ func (c *CUA) RunStream(ctx context.Context, task string) (<-chan RunEvent, erro
 	}()
 
 	return events, nil
+}
+
+// RunStreamWithTracking executes a task with streaming and automatically tracks
+// tool calls and execution time. This is useful when you want real-time visibility
+// into the ReAct loop while also tracking metrics, especially for tasks that may
+// fail mid-execution.
+//
+// Returns the final content and any error that occurred.
+// Even if an error occurs, the tool calls and execution time are tracked in Usage().
+func (c *CUA) RunStreamWithTracking(ctx context.Context, task string) (string, error) {
+	startTime := time.Now()
+
+	events, err := c.RunStream(ctx, task)
+	if err != nil {
+		return "", err
+	}
+
+	var finalContent string
+	var finalError error
+	var toolCalls int
+	var llmCalls int
+
+	for event := range events {
+		switch event.Type {
+		case EventToolCall:
+			toolCalls++
+		case EventThinking:
+			llmCalls++ // Each thinking event typically represents an LLM iteration
+		case EventContent:
+			finalContent = event.Content
+		case EventComplete:
+			if event.Content != "" {
+				finalContent = event.Content
+			}
+		case EventError:
+			finalError = event.Error
+		}
+	}
+
+	// Track the run with metrics we collected from streaming
+	elapsedMs := time.Since(startTime).Milliseconds()
+	c.usageStats.Add(nil, llmCalls, toolCalls, elapsedMs)
+
+	// Check token limit (even though we don't have token counts from streaming)
+	c.checkTokenLimit()
+
+	return finalContent, finalError
 }
 
 // Tools returns the list of available tools.
@@ -606,15 +679,12 @@ KEYBOARD ACTIONS:
 </tools>
 
 <workflow>
-Execute the ReAct pattern for each action:
-1. OBSERVE → Take screenshot to see current state
-2. ANALYZE → Describe what you see, identify target elements
-3. PLAN → Decide single next action, calculate coordinates
-4. ACT → Execute ONE action only
-5. VERIFY → Take screenshot to confirm result
-6. ITERATE → Repeat until task complete
-
-CRITICAL: One action per turn. Wait for screenshot before next action.
+ReAct loop (ONE action per turn):
+1. OBSERVE → Screenshot first
+2. ANALYZE → Identify target element, calculate coordinates
+3. ACT → Execute single action
+4. VERIFY → Screenshot to confirm
+5. ITERATE → Repeat until done
 </workflow>
 
 <safety_rules>
@@ -638,23 +708,20 @@ CONFIRMATION REQUIRED before:
 - Modifying account settings
 </safety_rules>
 
-<context_engineering>
-GOAL PERSISTENCE (prevent drift in long tasks):
-- Periodically restate: "Original task: [user's request]"
-- Before each action, verify it serves the goal
-- If distracted, say: "Refocusing on original task: [task]"
+<agent_strategy>
+GOAL FOCUS:
+- Before each action, verify it serves the original task
+- If drifting, state: "Refocusing on: [original task]"
 
-ERROR HANDLING (learn from failures):
-- When action fails, STOP and analyze WHY from screenshot
-- Do NOT immediately retry the same approach
-- Try alternatives: different coordinates, keyboard shortcuts, different workflow
-- After 3 failures on same step, try completely different approach
+ERROR RECOVERY:
+- On failure: STOP, analyze screenshot, understand WHY
+- Don't retry same approach - try different coordinates, shortcuts, or workflow
+- After 3 failures: completely different approach
 
-PROGRESS TRACKING:
-- After complex sequences, take screenshot to verify cumulative progress
-- Don't assume success - always verify visually
-- If multiple steps succeeded but goal not achieved, reassess strategy
-</context_engineering>
+VERIFICATION:
+- Don't assume success - always verify with screenshot
+- If steps succeeded but goal not met, reassess strategy
+</agent_strategy>
 
 <coordinate_tips>
 CLICKING ACCURACY:
@@ -670,16 +737,12 @@ COMMON ELEMENT LOCATIONS (normalized 0-1000):
 - Dialog buttons: often bottom-right of dialog (x ≈ 700-900, y ≈ 700-900 of dialog)
 </coordinate_tips>
 
-<execution_guidelines>
-1. ALWAYS screenshot first - never act blind
-2. DESCRIBE what you see before acting
-3. CALCULATE coordinates explicitly based on visual observation
-4. ONE action per turn - wait for result
-5. VERIFY success after each action
-6. Use KEYBOARD SHORTCUTS when more reliable than clicking
-7. For text input: click to focus field FIRST, then type
-8. Wait for UI animations/loading to complete
-9. If element not visible, scroll to find it first
-10. Stay focused on the user's original goal
-</execution_guidelines>`, platformContext, now.Format(time.RFC3339), screen.Width, screen.Height, screen.Index, screen.ScaleFactor)
+<execution_tips>
+- Screenshot first, never act blind
+- Calculate coordinates from visual observation
+- Prefer keyboard shortcuts when reliable
+- For text: click to focus, then type
+- Wait for animations/loading to complete
+- If element not visible, scroll first
+</execution_tips>`, platformContext, now.Format(time.RFC3339), screen.Width, screen.Height, screen.Index, screen.ScaleFactor)
 }
