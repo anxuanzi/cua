@@ -753,8 +753,8 @@ HOW TO CALCULATE COORDINATES:
 1. Look at where your target appears in the screenshot
 2. Estimate its relative position on screen as a percentage
 3. Convert to 0-1000 scale: position = percentage * 10
-   - Element at 25% from left → x = 250
-   - Element at 75% from top → y = 750
+   - Element at 25 percent from left → x = 250
+   - Element at 75 percent from top → y = 750
 4. Use those normalized values for mouse_click coordinates
 
 QUICK REFERENCE:
