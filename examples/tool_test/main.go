@@ -17,10 +17,44 @@ func main() {
 	fmt.Println("Watch your screen to verify actions are happening.")
 	fmt.Println()
 
+	// Test: App List (no permissions needed)
+	fmt.Println("=== APP LIST TEST ===")
+	fmt.Println("Listing installed applications...")
+	appList := tools.NewAppListTool()
+	result, err := appList.Execute(ctx, `{"limit": 10}`)
+	if err != nil {
+		fmt.Printf("   ERROR: %v\n", err)
+	} else {
+		fmt.Printf("   First 10 apps: %s\n", result)
+	}
+
+	// Test: Search for Calculator
+	fmt.Println("\nSearching for 'Calculator'...")
+	result, err = appList.Execute(ctx, `{"search": "calculator"}`)
+	if err != nil {
+		fmt.Printf("   ERROR: %v\n", err)
+	} else {
+		fmt.Printf("   Search result: %s\n", result)
+	}
+
+	// Test: App Launch
+	fmt.Println("\n=== APP LAUNCH TEST ===")
+	fmt.Println("Launching Calculator using app_launch tool...")
+	appLaunch := tools.NewAppLaunchTool()
+	result, err = appLaunch.Execute(ctx, `{"app_name": "Calculator"}`)
+	if err != nil {
+		fmt.Printf("   ERROR: %v\n", err)
+	} else {
+		fmt.Printf("   Result: %s\n", result)
+	}
+	fmt.Println("   Did Calculator open? (This bypasses Spotlight entirely!)")
+	time.Sleep(2 * time.Second)
+
 	// Test 1: Screen capture (should work if permissions are OK)
+	fmt.Println("\n=== SCREEN CAPTURE TEST ===")
 	fmt.Println("1. Testing screen_capture...")
 	screenshot := tools.NewScreenshotTool()
-	result, err := screenshot.Execute(ctx, `{}`)
+	result, err = screenshot.Execute(ctx, `{}`)
 	if err != nil {
 		fmt.Printf("   ERROR: %v\n", err)
 	} else {

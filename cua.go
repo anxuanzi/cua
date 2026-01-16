@@ -206,6 +206,8 @@ func createTools(screenIndex int) []interfaces.Tool {
 		tools.NewTypeTool(),
 		tools.NewKeyPressTool(),
 		tools.NewScreenInfoTool(),
+		tools.NewAppLaunchTool(),
+		tools.NewAppListTool(),
 	}
 }
 
@@ -667,6 +669,10 @@ SCREEN OBSERVATION (use frequently):
 - screen_capture: Take screenshot to see current state. ALWAYS call first.
 - screen_info: Get display dimensions and configuration.
 
+APPLICATION CONTROL (preferred for launching apps):
+- app_launch: Launch app by name. MORE RELIABLE than Spotlight/Start menu.
+- app_list: List installed apps, optionally filter by search term.
+
 MOUSE ACTIONS (coordinates in 0-1000 range):
 - mouse_click: Click at (x, y). Use for buttons, links, icons.
 - mouse_move: Move cursor without clicking. Use for hover states.
@@ -740,6 +746,7 @@ COMMON ELEMENT LOCATIONS (normalized 0-1000):
 <execution_tips>
 - Screenshot first, never act blind
 - Calculate coordinates from visual observation
+- To open apps: USE app_launch instead of Spotlight/Start menu
 - Prefer keyboard shortcuts when reliable
 - For text: click to focus, then type
 - Wait for animations/loading to complete
