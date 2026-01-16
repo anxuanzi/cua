@@ -2,9 +2,6 @@ package tools
 
 import (
 	"context"
-	"time"
-
-	"github.com/go-vgo/robotgo"
 )
 
 // TypeTool types text at the current cursor position.
@@ -61,21 +58,8 @@ func (t *TypeTool) Execute(ctx context.Context, argsJSON string) (string, error)
 		charDelay = 10
 	}
 
-	// Delay before typing to ensure UI is ready (Spotlight, dialogs need time)
-	time.Sleep(150 * time.Millisecond)
-
-	// Type character by character with delay for reliability
-	// This works better with macOS secure text fields like Spotlight
-	for _, char := range args.Text {
-		robotgo.TypeStr(string(char))
-		time.Sleep(time.Duration(charDelay) * time.Millisecond)
-	}
-
-	return SuccessResponse(map[string]interface{}{
-		"typed_text": args.Text,
-		"char_count": len(args.Text),
-		"delay_ms":   args.DelayMs,
-	}), nil
+	// Platform-specific typing implementation
+	return typeText(ctx, args.Text, charDelay)
 }
 
 // Run implements the interfaces.Tool Run method by delegating to Execute.
