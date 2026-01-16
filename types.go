@@ -38,6 +38,12 @@ type Config struct {
 
 	// Timeout sets the maximum time for a single task in seconds (default: 120).
 	Timeout int
+
+	// OrgID is the organization ID for multi-tenancy support.
+	OrgID string
+
+	// ConversationID is the conversation ID for memory isolation.
+	ConversationID string
 }
 
 // defaultConfig returns the default configuration.

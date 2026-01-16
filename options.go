@@ -58,3 +58,17 @@ func WithTimeout(seconds int) Option {
 		c.Timeout = seconds
 	}
 }
+
+// WithOrgID sets the organization ID for multi-tenancy support.
+func WithOrgID(orgID string) Option {
+	return func(c *Config) {
+		c.OrgID = orgID
+	}
+}
+
+// WithConversationID sets the conversation ID for memory isolation.
+func WithConversationID(conversationID string) Option {
+	return func(c *Config) {
+		c.ConversationID = conversationID
+	}
+}

@@ -29,6 +29,7 @@ import (
 	"github.com/Ingenimax/agent-sdk-go/pkg/llm/openai"
 	"github.com/Ingenimax/agent-sdk-go/pkg/memory"
 	"github.com/Ingenimax/agent-sdk-go/pkg/multitenancy"
+	"github.com/google/uuid"
 
 	"github.com/anxuanzi/cua/internal/tools"
 )
@@ -158,15 +159,36 @@ func createTools(screenIndex int) []interfaces.Tool {
 	}
 }
 
+// prepareContext adds required context values for agent operations.
+// It sets organization ID and conversation ID which are required by agent-sdk-go's memory system.
+func (c *CUA) prepareContext(ctx context.Context) context.Context {
+	// Set organization ID (default if not configured)
+	orgID := c.config.OrgID
+	if orgID == "" {
+		orgID = "cua-default-org"
+	}
+	ctx = multitenancy.WithOrgID(ctx, orgID)
+
+	// Set conversation ID (generate UUID if not configured)
+	convID := c.config.ConversationID
+	if convID == "" {
+		convID = uuid.New().String()
+	}
+	ctx = memory.WithConversationID(ctx, convID)
+
+	return ctx
+}
+
 // Run executes a task and returns the final result.
 // This delegates to agent-sdk-go's agent which handles the ReAct loop.
 func (c *CUA) Run(ctx context.Context, task string) (string, error) {
-	ctx = multitenancy.WithOrgID(ctx, "CUA-DEFAULT-ORG")
+	ctx = c.prepareContext(ctx)
 	return c.agent.Run(ctx, task)
 }
 
 // RunDetailed executes a task and returns detailed response including token usage.
 func (c *CUA) RunDetailed(ctx context.Context, task string) (*interfaces.AgentResponse, error) {
+	ctx = c.prepareContext(ctx)
 	return c.agent.RunDetailed(ctx, task)
 }
 
@@ -202,6 +224,9 @@ const (
 // RunStream executes a task and streams events back.
 // This provides visibility into the ReAct loop: Thought → Action → Observation
 func (c *CUA) RunStream(ctx context.Context, task string) (<-chan RunEvent, error) {
+	// Prepare context with org ID and conversation ID
+	ctx = c.prepareContext(ctx)
+
 	// Create output channel
 	events := make(chan RunEvent, 100)
 
