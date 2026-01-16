@@ -28,6 +28,7 @@ import (
 	"github.com/Ingenimax/agent-sdk-go/pkg/llm/gemini"
 	"github.com/Ingenimax/agent-sdk-go/pkg/llm/openai"
 	"github.com/Ingenimax/agent-sdk-go/pkg/memory"
+	"github.com/Ingenimax/agent-sdk-go/pkg/multitenancy"
 
 	"github.com/anxuanzi/cua/internal/tools"
 )
@@ -160,6 +161,7 @@ func createTools(screenIndex int) []interfaces.Tool {
 // Run executes a task and returns the final result.
 // This delegates to agent-sdk-go's agent which handles the ReAct loop.
 func (c *CUA) Run(ctx context.Context, task string) (string, error) {
+	ctx = multitenancy.WithOrgID(ctx, "CUA-DEFAULT-ORG")
 	return c.agent.Run(ctx, task)
 }
 
