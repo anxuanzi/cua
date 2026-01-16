@@ -34,9 +34,9 @@ func (t *TypeTool) Parameters() map[string]ParameterSpec {
 		},
 		"delay_ms": {
 			Type:        "integer",
-			Description: "Delay between characters in milliseconds (0 for fastest)",
+			Description: "Delay between characters in milliseconds (default: 10 for reliability)",
 			Required:    false,
-			Default:     0,
+			Default:     10,
 		},
 	}
 }
@@ -55,19 +55,20 @@ func (t *TypeTool) Execute(ctx context.Context, argsJSON string) (string, error)
 		return ErrorResponse("text cannot be empty", "Provide the text to type"), nil
 	}
 
-	// Small delay before typing to ensure focus
-	time.Sleep(50 * time.Millisecond)
+	// Default delay if not specified (10ms for reliability)
+	charDelay := args.DelayMs
+	if charDelay == 0 {
+		charDelay = 10
+	}
 
-	// Type the text
-	if args.DelayMs > 0 {
-		// Type with delay between characters
-		for _, char := range args.Text {
-			robotgo.TypeStr(string(char))
-			time.Sleep(time.Duration(args.DelayMs) * time.Millisecond)
-		}
-	} else {
-		// Fast typing
-		robotgo.TypeStr(args.Text)
+	// Delay before typing to ensure UI is ready (Spotlight, dialogs need time)
+	time.Sleep(150 * time.Millisecond)
+
+	// Type character by character with delay for reliability
+	// This works better with macOS secure text fields like Spotlight
+	for _, char := range args.Text {
+		robotgo.TypeStr(string(char))
+		time.Sleep(time.Duration(charDelay) * time.Millisecond)
 	}
 
 	return SuccessResponse(map[string]interface{}{

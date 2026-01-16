@@ -80,7 +80,7 @@ func (t *KeyPressTool) Execute(ctx context.Context, argsJSON string) (string, er
 	}
 
 	// Small delay before key press
-	time.Sleep(50 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
 
 	// Press the key
 	if args.HoldMs > 0 {
@@ -102,6 +102,11 @@ func (t *KeyPressTool) Execute(ctx context.Context, argsJSON string) (string, er
 		} else {
 			robotgo.KeyTap(key)
 		}
+	}
+
+	// Extra delay after modifier combos (Spotlight, app launchers need time)
+	if len(modifiers) > 0 {
+		time.Sleep(300 * time.Millisecond)
 	}
 
 	return SuccessResponse(map[string]interface{}{

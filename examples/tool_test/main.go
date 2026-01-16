@@ -27,7 +27,41 @@ func main() {
 		fmt.Printf("   OK - got %d chars of base64\n", len(result))
 	}
 
-	fmt.Println("\n--- Starting interactive tests in 3 seconds ---")
+	// Test: Mouse movement demo - WATCH YOUR CURSOR!
+	fmt.Println("\n=== MOUSE MOVEMENT TEST ===")
+	fmt.Println("Watch your cursor move to different positions!")
+	fmt.Println("Starting in 2 seconds...")
+	time.Sleep(2 * time.Second)
+
+	moveTool := tools.NewMoveTool()
+
+	// Move to corners and center
+	positions := []struct {
+		name string
+		x, y int
+	}{
+		{"TOP-LEFT (0, 0)", 50, 50},
+		{"TOP-RIGHT (1000, 0)", 950, 50},
+		{"BOTTOM-RIGHT (1000, 1000)", 950, 950},
+		{"BOTTOM-LEFT (0, 1000)", 50, 950},
+		{"CENTER (500, 500)", 500, 500},
+	}
+
+	for _, pos := range positions {
+		fmt.Printf("   Moving to %s...\n", pos.name)
+		result, err = moveTool.Execute(ctx, fmt.Sprintf(`{"x": %d, "y": %d}`, pos.x, pos.y))
+		if err != nil {
+			fmt.Printf("   ERROR: %v\n", err)
+		} else {
+			fmt.Printf("   OK: %s\n", result)
+		}
+		time.Sleep(800 * time.Millisecond) // Pause so you can see each position
+	}
+
+	fmt.Println("\n   Did you see the cursor move to all 5 positions?")
+	fmt.Println("   If not, check Accessibility permissions.")
+
+	fmt.Println("\n--- Starting keyboard tests in 3 seconds ---")
 	fmt.Println("    Please focus on a text editor or terminal")
 	time.Sleep(3 * time.Second)
 
@@ -61,10 +95,13 @@ func main() {
 	} else {
 		fmt.Printf("   Result: %s\n", result)
 	}
-	time.Sleep(1 * time.Second)
+	// Note: keypress now has 300ms built-in delay for modifier combos
+	fmt.Println("   (Waiting for Spotlight to open...)")
+	time.Sleep(500 * time.Millisecond) // Additional wait for Spotlight animation
 
 	// Test 5: Type in spotlight
 	fmt.Println("\n5. Testing keyboard_type in Spotlight (typing 'Calculator')...")
+	fmt.Println("   (Now typing character by character with 10ms delay...)")
 	result, err = typeTool.Execute(ctx, `{"text": "Calculator"}`)
 	if err != nil {
 		fmt.Printf("   ERROR: %v\n", err)
@@ -82,8 +119,9 @@ func main() {
 		fmt.Printf("   Result: %s\n", result)
 	}
 
-	// Test 7: Mouse click
-	fmt.Println("\n7. Testing mouse_click at center (500, 500)...")
+	// Test 7: Mouse click - move first, then click
+	fmt.Println("\n7. Testing mouse_click...")
+	fmt.Println("   Moving cursor to center then clicking...")
 	click := tools.NewClickTool()
 	result, err = click.Execute(ctx, `{"x": 500, "y": 500}`)
 	if err != nil {
@@ -93,11 +131,16 @@ func main() {
 	}
 
 	fmt.Println("\n=== Test Complete ===")
-	fmt.Println("Did you see:")
-	fmt.Println("  - 'hello' typed?")
-	fmt.Println("  - Spotlight open?")
-	fmt.Println("  - 'Calculator' typed in Spotlight?")
-	fmt.Println("  - Mouse click in center?")
-	fmt.Println("\nIf not, check System Preferences > Privacy & Security > Accessibility")
-	fmt.Println("and ensure your terminal/IDE has permission.")
+	fmt.Println()
+	fmt.Println("CHECKLIST - Did you see:")
+	fmt.Println("  [ ] Cursor move to all 4 corners and center?")
+	fmt.Println("  [ ] 'hello' typed in your text editor?")
+	fmt.Println("  [ ] Spotlight open (Cmd+Space)?")
+	fmt.Println("  [ ] 'Calculator' typed in Spotlight?")
+	fmt.Println("  [ ] Mouse click in center?")
+	fmt.Println()
+	fmt.Println("If mouse didn't move: Check System Preferences > Privacy & Security > Accessibility")
+	fmt.Println("If typing didn't work: Also check Input Monitoring permissions")
+	fmt.Println()
+	fmt.Println("Your terminal/IDE needs BOTH Accessibility AND Input Monitoring permissions!")
 }
