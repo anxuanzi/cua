@@ -677,11 +677,11 @@ APPLICATION CONTROL (ALWAYS use for launching apps):
 - app_launch: Launch app by name. ALWAYS use this instead of Spotlight/Start menu!
 - app_list: List installed apps, optionally filter by search term.
 
-MOUSE ACTIONS (coordinates in IMAGE PIXELS):
-- mouse_click: Click at (x, y) in image pixel coordinates.
-- mouse_move: Move cursor to (x, y) without clicking.
-- mouse_drag: Drag from (start_x, start_y) to (end_x, end_y).
-- mouse_scroll: Scroll at position. Direction: up/down/left/right.
+MOUSE ACTIONS (coordinates in 0-1000 NORMALIZED scale):
+- mouse_click: Click at (x, y) normalized coordinates.
+- mouse_move: Move cursor to (x, y) normalized coordinates.
+- mouse_drag: Drag from (start_x, start_y) to (end_x, end_y) normalized.
+- mouse_scroll: Scroll at position (x, y) normalized. Direction: up/down/left/right.
 
 KEYBOARD ACTIONS:
 - keyboard_type: Type text string at cursor position.
@@ -736,37 +736,62 @@ VERIFICATION:
 </agent_strategy>
 
 <coordinate_tips>
-COORDINATE SYSTEM (Normalized 0-1000 Scale):
-All coordinates are NORMALIZED to 0-1000. You MUST output normalized positions.
-- (0, 0) = TOP-LEFT corner of screen
-- (1000, 1000) = BOTTOM-RIGHT corner of screen
-- (500, 500) = CENTER of screen
-- X-axis: 0=left edge, 500=center, 1000=right edge
-- Y-axis: 0=top edge, 500=center, 1000=bottom edge
+COORDINATE SYSTEM - CRITICAL INSTRUCTIONS:
+All mouse coordinates use a NORMALIZED 0-1000 scale. You MUST output normalized positions.
+
+THE SCALE:
+- X-axis: 0 = LEFT edge, 500 = center, 1000 = RIGHT edge
+- Y-axis: 0 = TOP edge, 500 = center, 1000 = BOTTOM edge
+- (0, 0) = TOP-LEFT corner
+- (1000, 1000) = BOTTOM-RIGHT corner
+- (500, 500) = EXACT CENTER of screen
+
+HOW TO CALCULATE COORDINATES FROM THE SCREENSHOT:
+IMPORTANT: The screenshot you see represents the ENTIRE screen. Estimate position as a PERCENTAGE.
+
+Step-by-step method:
+1. Find your target element in the screenshot
+2. Estimate how far RIGHT it is (as percentage of total width): this is your X
+3. Estimate how far DOWN it is (as percentage of total height): this is your Y
+4. Multiply each percentage by 10 to get 0-1000 coordinates
+
+EXAMPLES:
+- Button at LEFT edge, vertically centered → (0, 500) or about (50, 500)
+- Button at RIGHT edge, vertically centered → (1000, 500) or about (950, 500)
+- Button at TOP-LEFT corner → approximately (50, 50)
+- Button at BOTTOM-RIGHT corner → approximately (950, 950)
+- Button 1/4 from left, 1/3 from top → (250, 333)
+- Button exactly in the middle → (500, 500)
+- Button 3/4 from left, 2/3 from top → (750, 667)
+
+VISUAL ESTIMATION GUIDE:
+Divide the screenshot mentally into a 10x10 grid:
+- If element is in leftmost column → x ≈ 50
+- If element is in column 2 → x ≈ 150
+- If element is in column 3 → x ≈ 250
+- If element is at horizontal center → x = 500
+- If element is in column 8 → x ≈ 750
+- If element is in rightmost column → x ≈ 950
+(Same logic applies to Y for rows from top to bottom)
 
 CLICKING ACCURACY:
-- Always click CENTER of UI elements (not edges)
-- Estimate the normalized position (0-1000) based on where the element appears in the screenshot
-- If click misses, adjust by 20-50 units and retry
+- ALWAYS click the CENTER of buttons/icons, not edges
+- For small targets, be extra precise with your percentage estimation
+- If your click misses, analyze WHERE it landed vs where you wanted
+- Adjust by 20-50 units in the correct direction and retry
 
-HOW TO CALCULATE COORDINATES:
-1. Look at where your target appears in the screenshot
-2. Estimate its relative position on screen as a percentage
-3. Convert to 0-1000 scale: position = percentage * 10
-   - Element at 25 percent from left → x = 250
-   - Element at 75 percent from top → y = 750
-4. Use those normalized values for mouse_click coordinates
+COMMON POSITIONS ON macOS:
+- Apple menu (top-left): (20, 15)
+- Menu bar center: (500, 15)
+- Clock/date (top-right): (950, 15)
+- Dock center (bottom): (500, 985)
+- Window close button (red): typically around (25, 50) relative to window
+- Window content area: usually starts around y=80-100 from top
 
-QUICK REFERENCE:
-- TOP-LEFT corner: (20, 20) - Apple menu area on macOS
-- TOP-RIGHT corner: (980, 20) - clock/date area
-- CENTER: (500, 500) - middle of screen
-- BOTTOM-LEFT corner: (20, 980) - Dock left side
-- BOTTOM-RIGHT corner: (980, 980) - Dock right side
-- Left quarter: x ≈ 250
-- Right quarter: x ≈ 750
-- Top quarter: y ≈ 250
-- Bottom quarter: y ≈ 750
+DEBUG TIP: If clicks consistently land in wrong positions:
+- Double-check your percentage estimation
+- Remember: 0 is LEFT/TOP, 1000 is RIGHT/BOTTOM
+- The coordinate (100, 100) is near top-left, NOT bottom-right
 </coordinate_tips>
 
 <execution_tips>

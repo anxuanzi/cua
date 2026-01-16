@@ -115,22 +115,14 @@ func (t *ScreenshotTool) Execute(ctx context.Context, argsJSON string) (string, 
 	// Base64 encode
 	b64 := base64.StdEncoding.EncodeToString(buf.Bytes())
 
-	// Report LOGICAL dimensions (what the coordinate system uses)
-	// This ensures consistency with screen_info and the normalized coordinate system
-	// The LLM should think of the image as representing a screen of logical dimensions
+	// Simplified response to avoid confusing the model with dimension details
+	// The model should treat this as a full-screen image and estimate positions as percentages
 	result := map[string]interface{}{
 		"image_base64": b64,
-		// Report logical screen dimensions - these match the coordinate system
-		"screen_width":  screen.Width,
-		"screen_height": screen.Height,
-		// Report the actual image dimensions sent to the LLM
-		"image_width":  newW,
-		"image_height": newH,
-		// Include scale factor for debugging/information
-		"scale_factor": actualScaleFactor,
+		// Simple message to remind model about coordinate system
+		"note": "This image shows the FULL SCREEN. Use 0-1000 normalized coordinates based on visual percentage position.",
+		// Minimal metadata for debugging only
 		"screen_index": screenIndex,
-		"screen_x":     screen.X,
-		"screen_y":     screen.Y,
 	}
 
 	resultJSON, _ := json.Marshal(result)

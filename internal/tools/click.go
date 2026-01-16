@@ -93,6 +93,7 @@ func (t *ClickTool) Execute(ctx context.Context, argsJSON string) (string, error
 
 	// Convert normalized coordinates (0-1000) to absolute screen coordinates
 	// Formula: screen_coord = (normalized / 1000) * screen_dimension
+	// Standard mapping: 0=left/top, 1000=right/bottom (matches TuriX-CUA)
 	screenX := screen.X + int(float64(args.X)/1000.0*float64(screen.Width))
 	screenY := screen.Y + int(float64(args.Y)/1000.0*float64(screen.Height))
 

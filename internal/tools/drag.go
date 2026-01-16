@@ -102,6 +102,7 @@ func (t *DragTool) Execute(ctx context.Context, argsJSON string) (string, error)
 	screen := coords.GetScreen(screenIndex)
 
 	// Convert normalized coordinates (0-1000) to absolute screen coordinates
+	// Standard mapping: 0=left/top, 1000=right/bottom (matches TuriX-CUA)
 	startScreenX := screen.X + int(float64(args.StartX)/1000.0*float64(screen.Width))
 	startScreenY := screen.Y + int(float64(args.StartY)/1000.0*float64(screen.Height))
 	endScreenX := screen.X + int(float64(args.EndX)/1000.0*float64(screen.Width))
