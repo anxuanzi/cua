@@ -108,6 +108,9 @@ func New(opts ...Option) (*CUA, error) {
 		agent.WithSystemPrompt(systemPrompt),
 		agent.WithName("CUA"),
 		agent.WithMaxIterations(cfg.MaxIterations),
+		// Disable execution plan approval - allows direct tool execution without
+		// the intermediate plan parsing step that has JSON format issues with Gemini
+		agent.WithRequirePlanApproval(false),
 	}
 
 	// Add LLM config for reasoning if enabled
