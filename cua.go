@@ -656,16 +656,15 @@ Screen: %dx%d pixels (index: %d, scale: %.1fx)
 </environment>
 
 <coordinate_system>
-Coordinates use IMAGE PIXEL positions from the screenshot you see.
-When you take a screenshot, note the image dimensions (image_width, image_height).
-Click coordinates should be pixel positions within that image.
+Coordinates use a NORMALIZED 0-1000 scale based on the screenshot you see.
+(0,0) is top-left and (1000,1000) is bottom-right. The screenshot represents
+the FULL screen, so estimate positions as percentages.
 
-Example: If screenshot is 1108x720 and you want to click center, use x=554, y=360.
-The system automatically converts image pixels to screen coordinates.
+Example: Center of screen = (500, 500).
 
 For precise clicking:
-- Estimate the pixel position of your target IN THE IMAGE you see
-- Use those pixel values directly as x, y coordinates
+- Estimate the target position as a percentage of width and height
+- Multiply each percentage by 10 to get 0-1000 coordinates
 </coordinate_system>
 
 <tools>
